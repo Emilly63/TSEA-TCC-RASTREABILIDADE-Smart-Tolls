@@ -849,7 +849,7 @@ async function realizarMovimentacao(tipo, ferramentaId) {
                 if (correspondentes.length === 1) {
                     const ferramenta = correspondentes[0];
                     const setor = String(ferramenta.Setor || ferramenta.setor || '').trim().toUpperCase();
-                    if (setor === 'ALMOXERIFADO') {
+                    if (setor === 'ALMOXARIFADO') {
                         alert('❌ Não é possível pegar, pois a ferramenta está no almoxerifado.');
                         return;
                     }
@@ -972,22 +972,42 @@ function filtrarOficina(termo) {
 }
     // Exemplo de como chamar o Logout no seu index.html
 // Função de Logout atualizada para enviar o motivo
-async function fazerLogout() {
-    if (!usuarioLogado) return location.reload();
+function fazerLogout() {
+    // 1. Pega os dados do usuário que salvamos no login
+    const usuarioId = localStorage.getItem("usuarioId") || "123A";
+    const setorUsuario = localStorage.getItem("setorUsuario"); // Pega se é ADMIN ou OPERADOR
 
-    // Avisa o servidor que estamos saindo
-    await fetch(`${API_URL}/logout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            usuarioId: usuarioLogado.barcode, // Certifique-se que o campo é barcode ou usuarioId
-            motivo: 'MANUAL' 
+    console.log(`Tentando deslogar usuário. ID: ${usuarioId} | Setor: ${setorUsuario}`);
+
+    // 2. Se for ADMINISTRADOR, faz o logout silencioso (sem acionar o Arduino)
+    if (setorUsuario === "ADMIN") {
+        console.log("Admin saindo... Ignorando Arduino.");
+        localStorage.clear();
+        window.location.reload();
+        return; // Para a execução aqui e não chama o fetch do Arduino!
+    }
+
+    // 3. Se NÃO for Admin (ou seja, for OPERADOR), executa o logout normal que ativa o Arduino
+    fetch("http://localhost:5045/logout", { 
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            usuarioId: usuarioId,
+            motivo: "Voluntario"
         })
-    });
-
-    // Limpa os dados locais e volta para a tela de login
-    usuarioLogado = null;
-    location.reload(); 
+    })
+    .then(response => {
+        if (response.ok) {
+            console.log("Logout do Operador enviado ao C#!");
+            localStorage.clear();
+            window.location.reload();
+        } else {
+            console.error("Erro no logout do operador.");
+        }
+    })
+    .catch(error => console.error("Erro na requisição:", error));
 }
 // Verifique se esta função está EXATAMENTE assim (com as crases ` `)
 function mostrarTelaCadastro() {
@@ -1111,7 +1131,7 @@ async function mostrarAdmin(filtroSetor = 'GERAL') {
     // Exclui apenas ferramentas do almoxerifado da visualização do dashboard
     const dadosDashboard = dados.filter(f => {
         const setorDB = (f.setor || f.Setor || "").toString().trim().toUpperCase();
-        return setorDB !== 'ALMOXERIFADO';
+        return setorDB !== 'ALMOXARIFADO';
     });
 
     let listaFiltrada = dadosDashboard;
@@ -1146,7 +1166,7 @@ async function mostrarAdmin(filtroSetor = 'GERAL') {
                     <nav>
                         <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()">📊 DASHBOARD</div>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()">🛠️ OFICINA</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXERIFADO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXARIFADO</div>
                     </nav>
                     <div style="border-top: 1px solid #333; margin-top: 20px; padding-top: 15px;">
                         <button onclick="limparColaboradoresInvalidos()" style="width: 100%; background: #333; color: #aaa; border: 1px solid #555; padding: 10px; cursor: pointer; border-radius: 5px; font-size: 12px; margin-bottom: 10px;">

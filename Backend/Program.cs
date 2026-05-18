@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.StaticFiles;
+﻿using System.IO.Ports;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using System.ComponentModel.DataAnnotations;
@@ -6,6 +7,7 @@ using System.Net;
 using System.Net.Mail;
 using System.Security.Cryptography;
 
+// ✅ DEIXE APENAS ESSA LINHA ABAIXO. Delete o "using (SerialPort porta..." que estava aqui em cima!
 var builder = WebApplication.CreateBuilder(args);
 
 // --- CONFIGURAÇÃO DE CORS ---
@@ -14,7 +16,6 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
 });
 
-
 // --- CONFIGURAÇÃO DO BANCO DE DADOS (MYSQL) ---
 var connectionString = "server=localhost;port=3306;database=RASTREABILIDADES_TSEA;user=root;password=";
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -22,7 +23,6 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // Armazena tokens temporários de reset de senha
 var resetTokens = new Dictionary<string, (string Barcode, DateTime Expiry)>();
-
 
 var app = builder.Build();
 app.UseCors("AllowAll");
@@ -84,8 +84,6 @@ var smtpConfig = builder.Configuration.GetSection("Smtp").Get<SmtpSettings>() ??
 var notificacoesPendentes = new List<AvisoPendente>();
 var proximoAvisoId = 1;
 
-
-
 static string HashPassword(string password)
 {
     const int iterations = 100_000;
@@ -99,7 +97,7 @@ static string NormalizeBarcode(string? barcode)
     return string.IsNullOrWhiteSpace(barcode) ? string.Empty : barcode.Trim().ToUpperInvariant();
 }
 
-// ENDPOINT TEMPORÁRIO DE DEBUG — remova após resolver
+// ENDPOINT TEMPORÁRIO DE DEBUG
 app.MapGet("/debug/smtp", () => new {
     host = smtpConfig.Host,
     port = smtpConfig.Port,
@@ -114,7 +112,6 @@ static bool VerifyPassword(string password, string storedHash)
     var parts = storedHash.Split('.', 3);
     if (parts.Length != 3)
     {
-        // Suporte temporário para senhas antigas armazenadas em texto simples
         return password == storedHash;
     }
 
@@ -144,7 +141,6 @@ static async Task<bool> SendEmailAsync(SmtpSettings settings, string toEmail, st
     }
     catch (Exception ex)
     {
-        // ✅ Mostra o erro EXATO no terminal do backend
         Console.Error.WriteLine($"SMTP ERRO: {ex.Message}");
         Console.Error.WriteLine($"SMTP INNER: {ex.InnerException?.Message}");
         return false;
@@ -187,26 +183,6 @@ app.MapPost("/usuarios/cadastrar", async (CadastroRequest req, AppDbContext db) 
     return Results.Ok("Usuário cadastrado!");
 });
 
-// 2. LOGIN
-app.MapPost("/login", async (LoginRequest req, AppDbContext db) =>
-{
-    var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.CodigoBarras == req.Barcode);
-    if (usuario == null) return Results.NotFound("Usuário não cadastrado.");
-
-    if (usuario.Setor == "ADMIN")
-    {
-        if (string.IsNullOrWhiteSpace(req.Password))
-            return Results.BadRequest("Senha obrigatória para login de administrador.");
-
-        if (string.IsNullOrEmpty(usuario.PasswordHash) || !VerifyPassword(req.Password, usuario.PasswordHash))
-            return Results.BadRequest("Senha incorreta.");
-    }
-
-    db.LogsAcesso.Add(new LogAcesso { UsuarioId = usuario.CodigoBarras, DataEntrada = DateTime.Now, StatusAcesso = "ATIVO" });
-    await db.SaveChangesAsync();
-    return Results.Ok(new { nome = usuario.Nome, tipo = usuario.Setor });
-});
-
 app.MapGet("/smtp/check", () =>
 {
     var configured = !string.IsNullOrWhiteSpace(smtpConfig.Host)
@@ -217,7 +193,6 @@ app.MapGet("/smtp/check", () =>
 
     return Results.Ok(new { configured });
 });
-
 
 app.MapPost("/senha/recuperar", async (PasswordRecoveryRequest req, AppDbContext db) =>
 {
@@ -233,7 +208,6 @@ app.MapPost("/senha/recuperar", async (PasswordRecoveryRequest req, AppDbContext
     if (usuario.Setor != "ADMIN") return Results.BadRequest("Disponível apenas para administradores.");
     if (string.IsNullOrWhiteSpace(usuario.Email)) return Results.BadRequest("Email não cadastrado.");
 
-    // Gera código de 6 dígitos
     var codigo = new Random().Next(100000, 999999).ToString();
     resetTokens[codigo] = (barcodeUpper, DateTime.Now.AddMinutes(10));
 
@@ -266,13 +240,10 @@ Equipe TSEA";
     });
 });
 
-
 app.MapPost("/senha/redefinir", async (HttpContext http, AppDbContext db) =>
 {
-    // Lê o body manualmente para garantir
     using var reader = new StreamReader(http.Request.Body);
     var body = await reader.ReadToEndAsync();
-    Console.WriteLine($"Body recebido: {body}");
 
     RedefinirSenhaRequest? req = null;
     try
@@ -286,14 +257,11 @@ app.MapPost("/senha/redefinir", async (HttpContext http, AppDbContext db) =>
         return Results.BadRequest("Formato inválido.");
     }
 
-    Console.WriteLine($"Token: '{req?.Token}' | Senha: '{req?.NovaSenha}'");
-
     if (req == null || string.IsNullOrWhiteSpace(req.Token) || string.IsNullOrWhiteSpace(req.NovaSenha))
         return Results.BadRequest("Código e nova senha são obrigatórios.");
 
     if (!resetTokens.TryGetValue(req.Token, out var entry))
     {
-        Console.WriteLine($"Tokens disponíveis: {string.Join(", ", resetTokens.Keys)}");
         return Results.BadRequest("Código inválido ou já utilizado.");
     }
 
@@ -311,7 +279,6 @@ app.MapPost("/senha/redefinir", async (HttpContext http, AppDbContext db) =>
 
     return Results.Ok(new { mensagem = "Senha redefinida com sucesso! Faça o login." });
 });
-
 
 app.MapPost("/movimentacao/retirar", async (MovimentacaoReq req, AppDbContext db) =>
 {
@@ -368,7 +335,6 @@ app.MapPost("/movimentacao/retirar", async (MovimentacaoReq req, AppDbContext db
     catch (Exception ex) { return Results.Problem(ex.Message); }
 });
 
-// Endpoint para validar se ferramenta pode ser retirada
 app.MapGet("/ferramentas/{id}/pode-retirar", async (int id, AppDbContext db) =>
 {
     var ferramenta = await db.Ferramentas.FindAsync(id);
@@ -387,7 +353,6 @@ app.MapGet("/ferramentas/{id}/pode-retirar", async (int id, AppDbContext db) =>
     return Results.Ok(new { mensagem = "Ferramenta pode ser retirada." });
 });
 
-// 4. DEVOLVER FERRAMENTA
 app.MapPost("/movimentacao/devolver", async (MovimentacaoReq req, AppDbContext db) =>
 {
     Ferramenta? ferramenta = null;
@@ -438,27 +403,8 @@ app.MapPost("/movimentacao/devolver", async (MovimentacaoReq req, AppDbContext d
     return Results.Ok("Ferramenta devolvida com sucesso!");
 });
 
-// 5. LOGOUT
-app.MapPost("/logout", async (LogoutRequest req, AppDbContext db) =>
-{
-    var ultimoLog = await db.LogsAcesso
-        .Where(l => l.UsuarioId == req.UsuarioId && l.DataSaida == null)
-        .OrderByDescending(l => l.DataEntrada)
-        .FirstOrDefaultAsync();
-
-    if (ultimoLog != null) {
-        ultimoLog.DataSaida = DateTime.Now;
-        ultimoLog.MotivoSaida = req.Motivo;
-    }
-    await db.SaveChangesAsync();
-    return Results.Ok();
-});
-
-// 6. CADASTRAR FERRAMENTA (Versão corrigida usando Entity Framework)
-// --- ÚNICO ENDPOINT DE CADASTRO DE FERRAMENTAS ---
 app.MapPost("/ferramentas", async (Ferramenta f, AppDbContext db) => {
     try {
-        // Garante que o status e setor não venham nulos
         if (string.IsNullOrEmpty(f.Status)) f.Status = "DISPONIVEL";
         if (string.IsNullOrEmpty(f.Setor)) f.Setor = "GERAL";
 
@@ -485,7 +431,6 @@ app.MapPut("/ferramentas/{id}", async (int id, FerramentaUpdateRequest update, A
     if (ferramenta == null) return Results.NotFound(new { erro = "Ferramenta não encontrada." });
     if (ferramenta.Status == "EM_USO") return Results.BadRequest(new { erro = "Não é possível editar uma ferramenta que está em uso." });
 
-    // Se está tentando alterar para ALMOXERIFADO
     if (!string.IsNullOrEmpty(update.Setor) && update.Setor.Trim().ToUpper() == "ALMOXERIFADO" && ferramenta.Status == "EM_USO")
         return Results.BadRequest(new { erro = "Não é possível enviar ferramenta em uso para o almoxerifado." });
 
@@ -502,7 +447,7 @@ app.MapPut("/ferramentas/{id}", async (int id, FerramentaUpdateRequest update, A
     if (!string.IsNullOrEmpty(update.Status)) ferramenta.Status = update.Status;
 
     await db.SaveChangesAsync();
-    return Results.Ok(new { mensagem = "Ferramenta atualizada com sucesso." });
+    return Results.Ok(new { Urban = "Ferramenta atualizada com sucesso." });
 });
 
 app.MapPost("/ferramentas/{id}/manutencao", async (int id, AppDbContext db) => {
@@ -586,7 +531,6 @@ app.MapPatch("/ferramentas/{id}/manutencao", async (int id, AppDbContext db) => 
     return Results.Ok(new { mensagem = "Ferramenta marcada como manutenção." });
 });
 
-// 7. LISTAR FERRAMENTAS (Ajustado para o Front-end)
 app.MapGet("/ferramentas", async (AppDbContext db) => 
 {
     try 
@@ -643,7 +587,65 @@ app.MapGet("/ferramentas/duplicatas", async (AppDbContext db) => {
     return Results.Ok(duplicatas);
 });
 
+// --- ROTA LOGIN ---
+app.MapPost("/login", async (LoginRequest req, AppDbContext db) =>
+{
+    var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.CodigoBarras == req.Barcode);
+    if (usuario == null) return Results.NotFound("Usuário não cadastrado.");
+
+    if (usuario.Setor == "ADMIN")
+    {
+        if (string.IsNullOrWhiteSpace(req.Password))
+            return Results.BadRequest("Senha obrigatória para login de administrador.");
+
+        if (string.IsNullOrEmpty(usuario.PasswordHash) || !VerifyPassword(req.Password, usuario.PasswordHash))
+            return Results.BadRequest("Senha incorreta.");
+    }
+    
+    EnviarComandoArduino("LOGIN");
+    db.LogsAcesso.Add(new LogAcesso { UsuarioId = usuario.CodigoBarras, DataEntrada = DateTime.Now, StatusAcesso = "ATIVO" });
+    await db.SaveChangesAsync();
+    return Results.Ok(new { nome = usuario.Nome, tipo = usuario.Setor });
+});
+
+// --- ROTA LOGOUT ---
+app.MapPost("/logout", async (LogoutRequest req, AppDbContext db) =>
+{
+    var ultimoLog = await db.LogsAcesso
+        .Where(l => l.UsuarioId == req.UsuarioId && l.DataSaida == null)
+        .OrderByDescending(l => l.DataEntrada)
+        .FirstOrDefaultAsync();
+
+    if (ultimoLog != null) {
+        ultimoLog.DataSaida = DateTime.Now;
+        ultimoLog.MotivoSaida = req.Motivo;
+    }
+    await db.SaveChangesAsync();
+    EnviarComandoArduino("LOGOUT");
+    return Results.Ok();
+});
+
+// ⚠️ ESSA DEVE SER A ÚLTIMA LINHA ANTES DA FUNÇÃO ISOLADA
 app.Run();
+
+// --- FUNÇÃO PERSONALIZADA (ISOLADA APÓS O RUN) ---
+void EnviarComandoArduino(string comando)
+{
+    try
+    {
+        using (SerialPort porta = new SerialPort("COM5", 9600))
+        {
+            porta.Open();
+            porta.WriteLine(comando);
+            porta.Close();
+        }
+        Console.WriteLine($"[Arduino] Comando enviado com sucesso: {comando}");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Arduino] Erro ao comunicar na porta: {ex.Message}");
+    }
+}
 
 // --- MODELOS ---
 public class AppDbContext : DbContext {
@@ -663,8 +665,6 @@ public class Usuario {
     public string? PasswordHash { get; set; }
     public string? Email { get; set; }
 }
-
-
 
 public class Ferramenta {
     public int Id { get; set; }

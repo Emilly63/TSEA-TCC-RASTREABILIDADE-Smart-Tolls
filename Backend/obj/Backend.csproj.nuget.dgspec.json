@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\backend\\Backend.csproj": {}
+    "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\Backend\\Backend.csproj": {}
   },
   "projects": {
-    "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\backend\\Backend.csproj": {
+    "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\Backend\\Backend.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\backend\\Backend.csproj",
+        "projectUniqueName": "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\Backend\\Backend.csproj",
         "projectName": "Backend",
-        "projectPath": "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\backend\\Backend.csproj",
+        "projectPath": "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\Backend\\Backend.csproj",
         "packagesPath": "C:\\Users\\Emilly\\.nuget\\packages\\",
-        "outputPath": "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\backend\\obj\\",
+        "outputPath": "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\Backend\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Emilly\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -59,6 +59,10 @@
             "Pomelo.EntityFrameworkCore.MySql": {
               "target": "Package",
               "version": "[9.0.0, )"
+            },
+            "System.IO.Ports": {
+              "target": "Package",
+              "version": "[10.0.8, )"
             }
           },
           "imports": [
