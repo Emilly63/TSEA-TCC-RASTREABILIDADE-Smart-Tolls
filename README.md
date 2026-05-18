@@ -3,7 +3,6 @@
 
 Este sistema foi desenvolvido para gerenciar e registrar a movimentação (Entrada, Saída, Devolução, etc.) de ferramentas industriais de forma automatizada por meio da leitura de códigos de barras. O foco principal é a agilidade operacional combinada com a segurança de privilégios de acesso.
 
----
 
 ## 🚀 Fluxo de Funcionamento Geral
 
@@ -18,26 +17,6 @@ O fluxo de operação foi projetado para rodar em terminais industriais (Kiosks)
 * A partir desse momento, o foco do sistema vai automaticamente para o campo de captura de dados.
 * Cada ferramenta bipada dispara de maneira autônoma um gatilho de submissão para a API, registrando o histórico de movimentação do ativo associado àquele operador em tempo real. O campo é limpo imediatamente em seguida, preparando o terminal para a próxima ferramenta.
 
----
-
-## 🛠️ Tratamento de Hardware: O Caso do Caractere "A" Extra
-
-### O Problema Identificado
-Durante os testes em ambiente de produção, identificou-se que determinados modelos de leitores de código de barras (ou lotes de etiquetas impressas) estavam injetando um caractere sufixo indesejado (a letra **"A"** ou **"a"**) logo após a sequência numérica/alfanumérica real do código lido, imediatamente antes de simular o comando físico da tecla `ENTER`.
-
-Esse comportamento gerava dois impactos críticos no software:
-1.  **Falsos Positivos de Privilégio:** Como os crachás de administradores terminavam com a letra "A" no banco de dados para fins de identificação interna, o caractere intruso inserido pelo leitor fazia com que o sistema pensasse que *todos os operadores comuns eram administradores*, travando o fluxo para exigir uma senha de login inexistente.
-2.  **Erros de Inventário:** Na tela de movimentação de ferramentas, a inserção da letra "A" alterava a string enviada para o Backend, fazendo com que o sistema buscasse por códigos inexistentes (Ex: Buscando `FERRAMENTA01A` em vez de `FERRAMENTA01`), gerando falhas de registro.
-
-### A Solução Implementada (Filtro Inteligente no Front-end)
-Para contornar essa limitação física do hardware sem comprometer o banco de dados ou exigir a reconfiguração manual de cada aparelho leitor da fábrica, foi desenvolvida a rotina inteligente `normalizeScannerBarcode` aplicada no momento do evento de submissão (`Enter`).
-
-A regra do filtro funciona sob a seguinte lógica:
-
-* **Duplo Caractere (`AA`):** Se o código lido terminar com duas letras "A" em sequência (ex: `OP01AA`), o sistema compreende que o primeiro "A" faz parte da assinatura real de administrador e o segundo "A" é o ruído do leitor. O algoritmo executa um recorte cirúrgico (`.slice(0, -1)`) removendo apenas o último caractere.
-* **Caractere Único Extruso:** Se o código terminar com apenas um "A", o sistema cruza a informação com a lista de dados ou valida a tipagem. Caso determine que aquele código não deveria possuir o sufixo por padrão de fábrica, o caractere é removido automaticamente, enviando para as funções de comunicação com o Backend apenas o dado 100% limpo.
-
----
 
 ## ⚙️ Tecnologias Utilizadas
 * **Backend:** .NET C# (Web API / ASP.NET Core) com persistência em banco de dados relacional.
