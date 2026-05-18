@@ -1,5 +1,5 @@
-﻿# TSEA-TCC-RASTREABILIDADE-Smart-Tolls
-# TSEA System - Sistema de Rastreabilidade e Controle Industrial
+
+# EQUIPE Systems CDF - NOME SOLUÇÃO Smart Tools
 
 Este sistema foi desenvolvido para gerenciar e registrar a movimentação (Entrada, Saída, Devolução, etc.) de ferramentas industriais de forma automatizada por meio da leitura de códigos de barras. O foco principal é a agilidade operacional combinada com a segurança de privilégios de acesso.
 
