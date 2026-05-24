@@ -7,7 +7,7 @@ using System.Net;
 using System.Net.Mail;
 using System.Security.Cryptography;
 
-// ✅ DEIXE APENAS ESSA LINHA ABAIXO. Delete o "using (SerialPort porta..." que estava aqui em cima!
+// --- CONFIGURAÇÃO DO BUILDER ---
 var builder = WebApplication.CreateBuilder(args);
 
 // --- CONFIGURAÇÃO DE CORS ---
@@ -23,6 +23,9 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // Armazena tokens temporários de reset de senha
 var resetTokens = new Dictionary<string, (string Barcode, DateTime Expiry)>();
+
+// 🌟 INICIALIZA A PORTA SERIAL GLOBAL
+ArduinoSerial.Inicializar();
 
 var app = builder.Build();
 app.UseCors("AllowAll");
@@ -97,15 +100,6 @@ static string NormalizeBarcode(string? barcode)
     return string.IsNullOrWhiteSpace(barcode) ? string.Empty : barcode.Trim().ToUpperInvariant();
 }
 
-// ENDPOINT TEMPORÁRIO DE DEBUG
-app.MapGet("/debug/smtp", () => new {
-    host = smtpConfig.Host,
-    port = smtpConfig.Port,
-    user = smtpConfig.Username,
-    hasPassword = !string.IsNullOrWhiteSpace(smtpConfig.Password),
-    from = smtpConfig.From
-});
-
 static bool VerifyPassword(string password, string storedHash)
 {
     if (string.IsNullOrEmpty(storedHash)) return false;
@@ -149,7 +143,14 @@ static async Task<bool> SendEmailAsync(SmtpSettings settings, string toEmail, st
 
 // --- ENDPOINTS ---
 
-// 1. CADASTRAR NOVO FUNCIONÁRIO
+app.MapGet("/debug/smtp", () => new {
+    host = smtpConfig.Host,
+    port = smtpConfig.Port,
+    user = smtpConfig.Username,
+    hasPassword = !string.IsNullOrWhiteSpace(smtpConfig.Password),
+    from = smtpConfig.From
+});
+
 app.MapPost("/usuarios/cadastrar", async (CadastroRequest req, AppDbContext db) =>
 {
     string barcodeUpper = req.Barcode.ToUpper();
@@ -212,32 +213,10 @@ app.MapPost("/senha/recuperar", async (PasswordRecoveryRequest req, AppDbContext
     resetTokens[codigo] = (barcodeUpper, DateTime.Now.AddMinutes(10));
 
     var subject = "Código de recuperação - TSEA";
-    var body = $@"Olá {usuario.Nome},
+    var body = $@"Olá {usuario.Nome}, Seu código é: {codigo}";
 
-Seu código de recuperação de senha é:
-
-{codigo}
-
-Digite este código na tela do sistema TSEA.
-O código expira em 10 minutos.
-
-Se não foi você, ignore este email.
-
-Atenciosamente,
-Equipe TSEA";
-
-    var emailEnviado = await SendEmailAsync(smtpConfig, usuario.Email, subject, body);
-
-    if (!emailEnviado)
-        return Results.BadRequest(new {
-            mensagem = "Não foi possível enviar o código de recuperação por email. Verifique o spam, as configurações de SMTP do backend ou entre em contato com o administrador.",
-            semEmail = true
-        });
-
-    return Results.Ok(new {
-        mensagem = $"Código enviado para {usuario.Email}. Se não receber em alguns minutos, verifique spam ou entre em contato com o administrador.",
-        semEmail = false
-    });
+    await SendEmailAsync(smtpConfig, usuario.Email, subject, body);
+    return Results.Ok(new { mensagem = $"Código enviado para {usuario.Email}." });
 });
 
 app.MapPost("/senha/redefinir", async (HttpContext http, AppDbContext db) =>
@@ -245,39 +224,26 @@ app.MapPost("/senha/redefinir", async (HttpContext http, AppDbContext db) =>
     using var reader = new StreamReader(http.Request.Body);
     var body = await reader.ReadToEndAsync();
 
-    RedefinirSenhaRequest? req = null;
-    try
-    {
-        req = System.Text.Json.JsonSerializer.Deserialize<RedefinirSenhaRequest>(body,
-            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Erro ao deserializar: {ex.Message}");
-        return Results.BadRequest("Formato inválido.");
-    }
+    RedefinirSenhaRequest? req = System.Text.Json.JsonSerializer.Deserialize<RedefinirSenhaRequest>(body,
+        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
     if (req == null || string.IsNullOrWhiteSpace(req.Token) || string.IsNullOrWhiteSpace(req.NovaSenha))
-        return Results.BadRequest("Código e nova senha são obrigatórios.");
+        return Results.BadRequest("Campos obrigatórios ausentes.");
 
-    if (!resetTokens.TryGetValue(req.Token, out var entry))
+    if (!resetTokens.TryGetValue(req.Token, out var entry) || DateTime.Now > entry.Expiry)
     {
-        return Results.BadRequest("Código inválido ou já utilizado.");
+        return Results.BadRequest("Código inválido ou expirado.");
     }
 
-    if (DateTime.Now > entry.Expiry)
-    {
-        resetTokens.Remove(req.Token);
-        return Results.BadRequest("Código expirado. Solicite um novo.");
-    }
     var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.CodigoBarras == entry.Barcode);
-    if (usuario == null) return Results.NotFound("Usuário não encontrado.");
-
-    usuario.PasswordHash = HashPassword(req.NovaSenha);
-    await db.SaveChangesAsync();
-    resetTokens.Remove(req.Token);
-
-    return Results.Ok(new { mensagem = "Senha redefinida com sucesso! Faça o login." });
+    if (usuario != null)
+    {
+        usuario.PasswordHash = HashPassword(req.NovaSenha);
+        await db.SaveChangesAsync();
+        resetTokens.Remove(req.Token);
+        return Results.Ok(new { mensagem = "Senha redefinida com sucesso!" });
+    }
+    return Results.NotFound("Usuário não encontrado.");
 });
 
 app.MapPost("/movimentacao/retirar", async (MovimentacaoReq req, AppDbContext db) =>
@@ -285,330 +251,223 @@ app.MapPost("/movimentacao/retirar", async (MovimentacaoReq req, AppDbContext db
     try 
     {
         Ferramenta? ferramenta = null;
-        if (req.FerramentaId.HasValue)
-        {
-            ferramenta = await db.Ferramentas.FindAsync(req.FerramentaId.Value);
-        }
 
+        // 1. Tenta pelo ID numérico direto
+        if (req.FerramentaId.HasValue)
+            ferramenta = await db.Ferramentas.FindAsync(req.FerramentaId.Value);
+
+        // 2. Tenta pelo CodigoBarras exato
         if (ferramenta == null && !string.IsNullOrWhiteSpace(req.FerramentaCodigoBarras))
         {
-            var codigoUpper = NormalizeBarcode(req.FerramentaCodigoBarras);
-            var ferramentas = await db.Ferramentas
-                .Where(f => f.CodigoBarras != null && f.CodigoBarras.ToUpper() == codigoUpper)
-                .ToListAsync();
+            var codigoNorm = req.FerramentaCodigoBarras.Trim().ToUpperInvariant();
+            ferramenta = await db.Ferramentas.FirstOrDefaultAsync(f => f.CodigoBarras == codigoNorm);
 
-            if (ferramentas.Count == 0 && codigoUpper.EndsWith("A"))
+            // 3. Extrai número do padrão TSEA-001 e busca pelo ID
+            if (ferramenta == null)
             {
-                var codigoSemA = codigoUpper.Substring(0, codigoUpper.Length - 1);
-                ferramentas = await db.Ferramentas
-                    .Where(f => f.CodigoBarras != null && f.CodigoBarras.ToUpper() == codigoSemA)
-                    .ToListAsync();
+                var match = System.Text.RegularExpressions.Regex.Match(codigoNorm, @"^TSEA-0*(\d+)$");
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var idExtraido))
+                {
+                    ferramenta = await db.Ferramentas.FindAsync(idExtraido);
+                    // Auto-preenche o CodigoBarras se estava nulo
+                    if (ferramenta != null && string.IsNullOrWhiteSpace(ferramenta.CodigoBarras))
+                    {
+                        ferramenta.CodigoBarras = codigoNorm;
+                    }
+                }
             }
-
-            if (ferramentas.Count > 1)
-                return Results.BadRequest(new { erro = "Mais de uma ferramenta possui este código de barras. Remova a duplicata e tente novamente." });
-
-            ferramenta = ferramentas.SingleOrDefault();
         }
 
+        if (ferramenta == null) return Results.BadRequest(new { erro = "Ferramenta não encontrada." });
+
         var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.CodigoBarras == req.UsuarioId);
+        if (usuario == null) return Results.BadRequest(new { erro = "Usuário não encontrado." });
 
-        if (ferramenta == null) return Results.BadRequest("ID ou código de barras da ferramenta não existe!");
-        if (usuario == null) return Results.BadRequest("Usuário não encontrado!");
+        // Bloqueia ferramentas do almoxarifado
+        var setorNorm = (ferramenta.Setor ?? "").Trim().ToUpperInvariant();
+        if (setorNorm == "GERAL" || setorNorm == "ALMOXERIFADO" || setorNorm == "")
+            return Results.BadRequest(new { erro = "Esta ferramenta está no almoxarifado e não pode ser retirada por aqui." });
 
-        var setorFerramenta = (ferramenta.Setor ?? "").Trim().ToUpper();
-        if (setorFerramenta == "ALMOXERIFADO") return Results.BadRequest(new { erro = "Não é possível pegar, pois a ferramenta está no almoxerifado." });
-        if (ferramenta.Status == "EM_USO") return Results.BadRequest("Ferramenta já está em uso.");
+        if (ferramenta.Status == "EM_USO")
+            return Results.BadRequest(new { erro = "Esta ferramenta já está em uso." });
+
+        if (ferramenta.Status == "MANUTENCAO")
+            return Results.BadRequest(new { erro = "Esta ferramenta está em manutenção." });
 
         ferramenta.Status = "EM_USO";
         ferramenta.Colaborador = usuario.Nome;
 
-        db.Movimentacoes.Add(new Movimentacoes { 
-            FerramentaId = ferramenta.Id, 
-            UsuarioId = req.UsuarioId, 
-            DataRetirada = DateTime.Now 
-        });
-
+        db.Movimentacoes.Add(new Movimentacoes { FerramentaId = ferramenta.Id, UsuarioId = req.UsuarioId, DataRetirada = DateTime.Now });
         await db.SaveChangesAsync();
-        return Results.Ok(new { mensagem = "Retirada concluída!", colaborador = usuario.Nome });
+        return Results.Ok(new { colaborador = usuario.Nome });
     }
     catch (Exception ex) { return Results.Problem(ex.Message); }
-});
-
-app.MapGet("/ferramentas/{id}/pode-retirar", async (int id, AppDbContext db) =>
-{
-    var ferramenta = await db.Ferramentas.FindAsync(id);
-    if (ferramenta == null) return Results.NotFound(new { erro = "Ferramenta não encontrada." });
-
-    var setorFerramenta = (ferramenta.Setor ?? "").Trim().ToUpper();
-    if (setorFerramenta == "ALMOXERIFADO") 
-        return Results.BadRequest(new { erro = "Não é possível pegar, pois a ferramenta está no almoxerifado." });
-    
-    if (ferramenta.Status == "EM_USO") 
-        return Results.BadRequest(new { erro = "Ferramenta já está em uso." });
-
-    if (ferramenta.Status == "MANUTENCAO")
-        return Results.BadRequest(new { erro = "Ferramenta está em manutenção." });
-
-    return Results.Ok(new { mensagem = "Ferramenta pode ser retirada." });
 });
 
 app.MapPost("/movimentacao/devolver", async (MovimentacaoReq req, AppDbContext db) =>
 {
     Ferramenta? ferramenta = null;
+
     if (req.FerramentaId.HasValue)
-    {
         ferramenta = await db.Ferramentas.FindAsync(req.FerramentaId.Value);
-    }
 
     if (ferramenta == null && !string.IsNullOrWhiteSpace(req.FerramentaCodigoBarras))
     {
-        var codigoUpper = NormalizeBarcode(req.FerramentaCodigoBarras);
-        var ferramentas = await db.Ferramentas
-            .Where(f => f.CodigoBarras != null && f.CodigoBarras.ToUpper() == codigoUpper)
-            .ToListAsync();
-
-        if (ferramentas.Count == 0 && codigoUpper.EndsWith("A"))
-        {
-            var codigoSemA = codigoUpper.Substring(0, codigoUpper.Length - 1);
-            ferramentas = await db.Ferramentas
-                .Where(f => f.CodigoBarras != null && f.CodigoBarras.ToUpper() == codigoSemA)
-                .ToListAsync();
-        }
-
-        if (ferramentas.Count > 1)
-            return Results.BadRequest(new { erro = "Mais de uma ferramenta possui este código de barras. Remova a duplicata e tente novamente." });
-
-        ferramenta = ferramentas.SingleOrDefault();
+        var codigoNorm = req.FerramentaCodigoBarras.Trim().ToUpperInvariant();
+        ferramenta = await db.Ferramentas.FirstOrDefaultAsync(f => f.CodigoBarras == codigoNorm);
     }
 
-    if (ferramenta == null) return Results.BadRequest("Ferramenta não encontrada!");
+    if (ferramenta == null) return Results.BadRequest(new { erro = "Ferramenta não encontrada." });
+    if (ferramenta.Status != "EM_USO") return Results.BadRequest(new { erro = "Esta ferramenta não está em uso." });
 
-    var setorFerramenta = (ferramenta.Setor ?? "").Trim().ToUpper();
-    if (setorFerramenta == "ALMOXERIFADO") return Results.BadRequest("Ferramenta está no almoxerifado.");
+    ferramenta.Status = "DISPONIVEL";
+    ferramenta.Colaborador = null;
 
-    var ferramentaIdParaMov = ferramenta.Id;
-    var mov = await db.Movimentacoes
-        .Where(m => m.FerramentaId == ferramentaIdParaMov && m.DataDevolucao == null)
-        .FirstOrDefaultAsync();
-    
-    if (ferramenta != null) {
-        ferramenta.Status = "DISPONIVEL";
-        ferramenta.Colaborador = null;
-    }
-
+    var mov = await db.Movimentacoes.FirstOrDefaultAsync(m => m.FerramentaId == ferramenta.Id && m.DataDevolucao == null);
     if (mov != null) mov.DataDevolucao = DateTime.Now;
     
     await db.SaveChangesAsync();
-    return Results.Ok("Ferramenta devolvida com sucesso!");
+    return Results.Ok("Devolvida com sucesso!");
 });
 
-app.MapPost("/ferramentas", async (Ferramenta f, AppDbContext db) => {
-    try {
-        if (string.IsNullOrEmpty(f.Status)) f.Status = "DISPONIVEL";
-        if (string.IsNullOrEmpty(f.Setor)) f.Setor = "GERAL";
-
-        if (!string.IsNullOrWhiteSpace(f.CodigoBarras))
-        {
-            var codigoUpper = NormalizeBarcode(f.CodigoBarras);
-            if (await db.Ferramentas.AnyAsync(x => x.CodigoBarras != null && x.CodigoBarras.ToUpper() == codigoUpper))
-                return Results.BadRequest(new { erro = "Já existe uma ferramenta cadastrada com este código de barras." });
-
-            f.CodigoBarras = codigoUpper;
-        }
-
-        db.Ferramentas.Add(f);
-        await db.SaveChangesAsync();
-        return Results.Ok(new { mensagem = "Ferramenta cadastrada com sucesso!", id = f.Id });
-    }
-    catch (Exception ex) {
-        return Results.BadRequest(new { erro = ex.Message });
-    }
+// --- LISTAR USUÁRIOS (para o admin buscar CodigoBarras pelo nome) ---
+app.MapGet("/usuarios", async (AppDbContext db) =>
+{
+    var usuarios = await db.Usuarios
+        .Where(u => u.Status == "ATIVO")
+        .Select(u => new { u.Id, u.Nome, u.CodigoBarras, u.Setor, u.Status })
+        .ToListAsync();
+    return Results.Ok(usuarios);
 });
 
-app.MapPut("/ferramentas/{id}", async (int id, FerramentaUpdateRequest update, AppDbContext db) => {
+app.MapGet("/ferramentas", async (AppDbContext db) => 
+{
+    var ferramentas = await db.Ferramentas.AsNoTracking().ToListAsync();
+    return Results.Ok(ferramentas);
+});
+
+// --- CADASTRAR NOVA FERRAMENTA ---
+app.MapPost("/ferramentas", async (Ferramenta nova, AppDbContext db) =>
+{
+    if (string.IsNullOrWhiteSpace(nova.Descricao))
+        return Results.BadRequest(new { erro = "Descrição obrigatória." });
+
+    if (!string.IsNullOrWhiteSpace(nova.CodigoBarras))
+    {
+        var duplicado = await db.Ferramentas.AnyAsync(f => f.CodigoBarras == nova.CodigoBarras);
+        if (duplicado) return Results.BadRequest(new { erro = "Código de barras já cadastrado." });
+    }
+
+    nova.Status = "DISPONIVEL";
+    nova.VidaUtil = 100;
+    db.Ferramentas.Add(nova);
+    await db.SaveChangesAsync();
+    return Results.Ok(nova);
+});
+
+// --- ATUALIZAR FERRAMENTA (setor, descrição, status, vida útil) ---
+app.MapPut("/ferramentas/{id:int}", async (int id, FerramentaUpdateRequest req, AppDbContext db) =>
+{
     var ferramenta = await db.Ferramentas.FindAsync(id);
     if (ferramenta == null) return Results.NotFound(new { erro = "Ferramenta não encontrada." });
-    if (ferramenta.Status == "EM_USO") return Results.BadRequest(new { erro = "Não é possível editar uma ferramenta que está em uso." });
 
-    if (!string.IsNullOrEmpty(update.Setor) && update.Setor.Trim().ToUpper() == "ALMOXERIFADO" && ferramenta.Status == "EM_USO")
-        return Results.BadRequest(new { erro = "Não é possível enviar ferramenta em uso para o almoxerifado." });
-
-    if (!string.IsNullOrEmpty(update.Descricao)) ferramenta.Descricao = update.Descricao;
-    if (!string.IsNullOrEmpty(update.Setor)) ferramenta.Setor = update.Setor;
-    if (!string.IsNullOrEmpty(update.CodigoBarras))
-    {
-        var codigoUpper = NormalizeBarcode(update.CodigoBarras);
-        if (await db.Ferramentas.AnyAsync(x => x.Id != id && x.CodigoBarras != null && x.CodigoBarras.ToUpper() == codigoUpper))
-            return Results.BadRequest(new { erro = "Já existe outra ferramenta com este mesmo código de barras." });
-        ferramenta.CodigoBarras = codigoUpper;
-    }
-    if (update.VidaUtil.HasValue) ferramenta.VidaUtil = update.VidaUtil.Value;
-    if (!string.IsNullOrEmpty(update.Status)) ferramenta.Status = update.Status;
+    if (!string.IsNullOrWhiteSpace(req.Descricao))  ferramenta.Descricao  = req.Descricao;
+    if (!string.IsNullOrWhiteSpace(req.Setor))       ferramenta.Setor      = req.Setor;
+    if (!string.IsNullOrWhiteSpace(req.Status))      ferramenta.Status     = req.Status;
+    if (!string.IsNullOrWhiteSpace(req.CodigoBarras)) ferramenta.CodigoBarras = req.CodigoBarras;
+    if (req.VidaUtil.HasValue)                       ferramenta.VidaUtil   = req.VidaUtil.Value;
 
     await db.SaveChangesAsync();
-    return Results.Ok(new { Urban = "Ferramenta atualizada com sucesso." });
+    return Results.Ok(new { mensagem = "Ferramenta atualizada com sucesso!" });
 });
 
-app.MapPost("/ferramentas/{id}/manutencao", async (int id, AppDbContext db) => {
+// --- MARCAR FERRAMENTA COMO MANUTENÇÃO ---
+app.MapPost("/ferramentas/{id:int}/manutencao", async (int id, AppDbContext db) =>
+{
     var ferramenta = await db.Ferramentas.FindAsync(id);
     if (ferramenta == null) return Results.NotFound(new { erro = "Ferramenta não encontrada." });
-
-    var setorFerramenta = (ferramenta.Setor ?? "").Trim().ToUpper();
-    if (setorFerramenta == "ALMOXERIFADO") return Results.BadRequest(new { erro = "Ferramenta está no almoxerifado." });
 
     ferramenta.Status = "MANUTENCAO";
+    ferramenta.Colaborador = null;
     await db.SaveChangesAsync();
-    return Results.Ok(new { mensagem = "Ferramenta marcada como manutenção." });
+    return Results.Ok(new { mensagem = "Ferramenta enviada para manutenção." });
 });
 
-app.MapPost("/avisos", async (AvisoRequest req) => {
-    if (req.FerramentaId <= 0 || string.IsNullOrWhiteSpace(req.UsuarioId))
-        return Results.BadRequest(new { erro = "FerramentaId e UsuarioId são obrigatórios." });
-
-    var aviso = new AvisoPendente {
-        Id = proximoAvisoId++,
-        FerramentaId = req.FerramentaId,
-        UsuarioId = req.UsuarioId.ToUpperInvariant(),
-        Mensagem = string.IsNullOrWhiteSpace(req.Mensagem) ? "Ferramenta não devolvida dentro do prazo." : req.Mensagem,
-        Lido = false,
-        CriadoEm = DateTime.Now
-    };
-
-    notificacoesPendentes.Add(aviso);
-    return Results.Ok(new { mensagem = "Aviso enviado ao operador.", avisoId = aviso.Id });
-});
-
-app.MapGet("/avisos/{usuarioId}", (string usuarioId) =>
-    Results.Ok(notificacoesPendentes
-        .Where(a => !a.Lido && a.UsuarioId.Equals(usuarioId, StringComparison.OrdinalIgnoreCase))
-        .Select(a => new { a.Id, a.FerramentaId, a.UsuarioId, a.Mensagem, a.CriadoEm })
-        .ToList())
-);
-
-app.MapPost("/avisos/{id}/lido", (int id) => {
-    var aviso = notificacoesPendentes.FirstOrDefault(a => a.Id == id);
-    if (aviso == null) return Results.NotFound(new { erro = "Aviso não encontrado." });
-    aviso.Lido = true;
-    return Results.Ok(new { mensagem = "Aviso marcado como lido." });
-});
-
-app.MapPost("/ferramentas/limpar-colaboradores", async (AppDbContext db) => {
-    try {
-        var usuarios = await db.Usuarios.AsNoTracking().Select(u => u.Nome.ToLower()).ToListAsync();
-        var ferramentas = await db.Ferramentas.ToListAsync();
-        
-        int removidas = 0;
-        foreach (var f in ferramentas) {
-            if (!string.IsNullOrEmpty(f.Colaborador) && !usuarios.Contains(f.Colaborador.ToLower())) {
-                f.Colaborador = null;
-                removidas++;
-            }
-        }
-        
-        await db.SaveChangesAsync();
-        return Results.Ok(new { mensagem = $"{removidas} colaboradores inválidos foram removidos." });
-    } catch (Exception ex) {
-        return Results.Problem($"Erro ao limpar colaboradores: {ex.Message}");
-    }
-});
-
-app.MapDelete("/ferramentas/{id}", async (int id, AppDbContext db) => {
+// --- EXCLUIR FERRAMENTA ---
+app.MapDelete("/ferramentas/{id:int}", async (int id, AppDbContext db) =>
+{
     var ferramenta = await db.Ferramentas.FindAsync(id);
     if (ferramenta == null) return Results.NotFound(new { erro = "Ferramenta não encontrada." });
+
+    if (ferramenta.Status == "EM_USO")
+        return Results.BadRequest(new { erro = "Não é possível excluir uma ferramenta em uso." });
 
     db.Ferramentas.Remove(ferramenta);
     await db.SaveChangesAsync();
     return Results.Ok(new { mensagem = "Ferramenta excluída com sucesso." });
 });
 
-app.MapPatch("/ferramentas/{id}/manutencao", async (int id, AppDbContext db) => {
-    var ferramenta = await db.Ferramentas.FindAsync(id);
-    if (ferramenta == null) return Results.NotFound(new { erro = "Ferramenta não encontrada." });
-
-    ferramenta.Status = "MANUTENCAO";
-    await db.SaveChangesAsync();
-    return Results.Ok(new { mensagem = "Ferramenta marcada como manutenção." });
-});
-
-app.MapGet("/ferramentas", async (AppDbContext db) => 
+// --- LIMPAR COLABORADORES INVÁLIDOS ---
+app.MapPost("/ferramentas/limpar-colaboradores", async (AppDbContext db) =>
 {
-    try 
-    {
-        var ferramentas = await db.Ferramentas.AsNoTracking().ToListAsync();
-        var movimentacoes = await db.Movimentacoes
-            .Where(m => m.DataDevolucao == null)
-            .AsNoTracking()
-            .ToListAsync();
-        var usuarios = await db.Usuarios.AsNoTracking().ToListAsync();
-
-        var resultado = ferramentas.Select(f => {
-            var mov = movimentacoes.FirstOrDefault(m => m.FerramentaId == f.Id);
-            string colabNome = "---";
-            string colabId = "";
-
-            if ((f.Status == "EM_USO" || f.Status == "ATRASADO") && mov != null) {
-                var user = usuarios.FirstOrDefault(u => u.CodigoBarras.Equals(mov.UsuarioId, StringComparison.OrdinalIgnoreCase));
-                colabNome = user?.Nome ?? (f.Colaborador ?? "Desconhecido");
-                colabId = mov.UsuarioId;
-            }
-
-            return new {
-                id = f.Id,
-                codigoBarras = f.CodigoBarras,
-                descricao = f.Descricao,
-                status = f.Status,
-                setor = f.Setor,
-                vidaUtil = f.VidaUtil,
-                colaborador = colabNome,
-                colaboradorId = colabId
-            };
-        });
-
-        return Results.Ok(resultado);
-    }
-    catch (Exception ex) 
-    {
-        return Results.Problem("Erro ao carregar dados: " + ex.Message);
-    }
-});
-
-app.MapGet("/ferramentas/duplicatas", async (AppDbContext db) => {
-    var duplicatas = await db.Ferramentas
-        .Where(f => f.CodigoBarras != null)
-        .GroupBy(f => f.CodigoBarras)
-        .Where(g => g.Count() > 1)
-        .Select(g => new {
-            codigoBarras = g.Key,
-            quantidade = g.Count(),
-            ferramentas = g.Select(f => new { f.Id, f.Descricao, f.Setor, f.Status }).ToList()
-        })
+    var codigosValidos = await db.Usuarios.Select(u => u.CodigoBarras).ToListAsync();
+    var ferramentasComColaborador = await db.Ferramentas
+        .Where(f => f.Colaborador != null)
         .ToListAsync();
-    return Results.Ok(duplicatas);
+
+    int count = 0;
+    foreach (var f in ferramentasComColaborador)
+    {
+        var colaboradorExiste = await db.Usuarios.AnyAsync(u => u.Nome == f.Colaborador);
+        if (!colaboradorExiste)
+        {
+            f.Colaborador = null;
+            f.Status = "DISPONIVEL";
+            count++;
+        }
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { mensagem = $"{count} ferramenta(s) corrigida(s)." });
 });
 
-// --- ROTA LOGIN ---
+// --- ROTA LOGIN CORRIGIDA ---
+// --- ROTA LOGIN (CORRIGIDA) ---
 app.MapPost("/login", async (LoginRequest req, AppDbContext db) =>
 {
-    var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.CodigoBarras == req.Barcode);
-    if (usuario == null) return Results.NotFound("Usuário não cadastrado.");
+    var barcodeNorm = req.Barcode.Trim().ToUpperInvariant();
+    var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.CodigoBarras == barcodeNorm);
+
+    if (usuario == null) 
+        return Results.NotFound("Usuário não cadastrado.");
+
+    if (usuario.Status != "ATIVO") 
+        return Results.BadRequest("Usuário inativo.");
 
     if (usuario.Setor == "ADMIN")
     {
         if (string.IsNullOrWhiteSpace(req.Password))
             return Results.BadRequest("Senha obrigatória para login de administrador.");
 
-        if (string.IsNullOrEmpty(usuario.PasswordHash) || !VerifyPassword(req.Password, usuario.PasswordHash))
-            return Results.BadRequest("Senha incorreta.");
+        if (!VerifyPassword(req.Password, usuario.PasswordHash ?? ""))
+            return Results.Unauthorized();
     }
-    
+
+    // Envia o comando direto para o Arduino mexer o Servo e ligar o LED Verde
     EnviarComandoArduino("LOGIN");
-    db.LogsAcesso.Add(new LogAcesso { UsuarioId = usuario.CodigoBarras, DataEntrada = DateTime.Now, StatusAcesso = "ATIVO" });
+
+    db.LogsAcesso.Add(new LogAcesso { 
+        UsuarioId = usuario.CodigoBarras, 
+        DataEntrada = DateTime.Now, 
+        StatusAcesso = "ATIVO" 
+    });
     await db.SaveChangesAsync();
-    return Results.Ok(new { nome = usuario.Nome, tipo = usuario.Setor });
+
+    return Results.Ok(new { nome = usuario.Nome, tipo = usuario.Setor, id = usuario.CodigoBarras });
 });
 
-// --- ROTA LOGOUT ---
+// --- ROTA LOGOUT INTELIGENTE CORRIGIDA ---
+// --- ROTA LOGOUT (CORRIGIDA - SEM TRAVAMENTOS) ---
 app.MapPost("/logout", async (LogoutRequest req, AppDbContext db) =>
 {
     var ultimoLog = await db.LogsAcesso
@@ -616,38 +475,142 @@ app.MapPost("/logout", async (LogoutRequest req, AppDbContext db) =>
         .OrderByDescending(l => l.DataEntrada)
         .FirstOrDefaultAsync();
 
-    if (ultimoLog != null) {
+    if (ultimoLog != null)
+    {
         ultimoLog.DataSaida = DateTime.Now;
         ultimoLog.MotivoSaida = req.Motivo;
     }
     await db.SaveChangesAsync();
+
+    // Notifica o Arduino que a conta deslogou para iniciar o buzzer
     EnviarComandoArduino("LOGOUT");
+
     return Results.Ok();
 });
 
-// ⚠️ ESSA DEVE SER A ÚLTIMA LINHA ANTES DA FUNÇÃO ISOLADA
+// --- ROTA DE CONSULTA DO BOTÃO ---
+app.MapGet("/api/arduino/status-botao", () => {
+    if (BotaoControle.ConfirmadoSaida) {
+        BotaoControle.ConfirmadoSaida = false; 
+        return Results.Ok(new { confirmado = true });
+    }
+
+    try 
+    {
+        if (ArduinoSerial.Porta.IsOpen && ArduinoSerial.Porta.BytesToRead > 0)
+        {
+            // Lê TODAS as linhas do buffer para não perder o BOTAO_SAIDA_OK
+            while (ArduinoSerial.Porta.BytesToRead > 0)
+            {
+                string resposta = ArduinoSerial.Porta.ReadLine().Trim();
+                Console.WriteLine($"[Arduino] Recebido: {resposta}");
+                if (resposta == "BOTAO_SAIDA_OK")
+                {
+                    Console.WriteLine("[Arduino] Confirmação do botão físico detetada!");
+                    return Results.Ok(new { confirmado = true });
+                }
+            }
+        }
+    }
+    catch { /* Evita travar a API com timeouts corriqueiros */ }
+
+    return Results.Ok(new { confirmado = false });
+});
+
+// --- AVISOS ---
+
+// Criar aviso
+app.MapPost("/avisos", (AvisoRequest req) =>
+{
+    if (string.IsNullOrWhiteSpace(req.UsuarioId))
+        return Results.BadRequest(new { erro = "UsuarioId é obrigatório." });
+
+    var aviso = new AvisoPendente
+    {
+        Id = proximoAvisoId++,
+        FerramentaId = req.FerramentaId,
+        UsuarioId = req.UsuarioId.Trim().ToUpperInvariant(),
+        Mensagem = req.Mensagem ?? "Você recebeu um aviso do administrador.",
+        Lido = false,
+        CriadoEm = DateTime.Now
+    };
+    notificacoesPendentes.Add(aviso);
+    return Results.Ok(new { mensagem = "Aviso enviado com sucesso.", id = aviso.Id });
+});
+
+// Buscar avisos de um operador
+app.MapGet("/avisos/{usuarioId}", (string usuarioId) =>
+{
+    var norm = usuarioId.Trim().ToUpperInvariant();
+    var avisos = notificacoesPendentes
+        .Where(a => a.UsuarioId == norm && !a.Lido)
+        .OrderByDescending(a => a.CriadoEm)
+        .ToList();
+    return Results.Ok(avisos);
+});
+
+// Marcar aviso como lido
+app.MapPost("/avisos/{id:int}/lido", (int id) =>
+{
+    var aviso = notificacoesPendentes.FirstOrDefault(a => a.Id == id);
+    if (aviso == null) return Results.NotFound(new { erro = "Aviso não encontrado." });
+    aviso.Lido = true;
+    return Results.Ok(new { mensagem = "Aviso marcado como lido." });
+});
+
 app.Run();
 
-// --- FUNÇÃO PERSONALIZADA (ISOLADA APÓS O RUN) ---
+// --- FUNÇÃO DE ENVIO ---
 void EnviarComandoArduino(string comando)
 {
     try
     {
-        using (SerialPort porta = new SerialPort("COM5", 9600))
+        if (ArduinoSerial.Porta != null && ArduinoSerial.Porta.IsOpen)
         {
-            porta.Open();
-            porta.WriteLine(comando);
-            porta.Close();
+            // CORREÇÃO ESSENCIAL: Usar WriteLine para enviar a quebra de linha '\n'
+            ArduinoSerial.Porta.WriteLine(comando); 
+            Console.WriteLine($"[Serial] Comando enviado com sucesso: {comando}");
         }
-        Console.WriteLine($"[Arduino] Comando enviado com sucesso: {comando}");
+        else
+        {
+            Console.WriteLine("[Serial Error] Porta não está aberta.");
+        }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[Arduino] Erro ao comunicar na porta: {ex.Message}");
+        Console.WriteLine($"[Serial Error] Erro ao enviar comando: {ex.Message}");
     }
 }
 
-// --- MODELOS ---
+// ============================================================
+// CLASSES — devem ficar SEMPRE após o app.Run()
+// ============================================================
+
+// 🌟 CONTROLE DO STATUS DO BOTÃO
+public static class BotaoControle
+{
+    public static bool ConfirmadoSaida { get; set; } = false;
+}
+
+// 🔌 CONEXÃO SERIAL GLOBAL
+public static class ArduinoSerial
+{
+    public static SerialPort Porta = new SerialPort("COM5", 9600) { ReadTimeout = 150 };
+    
+    public static void Inicializar()
+    {
+        try {
+            if (!Porta.IsOpen) {
+                Porta.Open();
+                Console.WriteLine("[Arduino] Conexão Serial global aberta com sucesso na COM5!");
+            }
+        } catch (Exception ex) {
+            Console.WriteLine($"[Arduino] Erro crítico ao abrir porta serial global: {ex.Message}");
+        }
+    }
+}
+
+// --- MODELOS DE BANCO DE DADOS ---
 public class AppDbContext : DbContext {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
     public DbSet<Usuario> Usuarios { get; set; }
@@ -699,6 +662,7 @@ public record CadastroRequest(string Nome, string Barcode, string Setor, string?
 public record PasswordRecoveryRequest(string Barcode);
 public record LogoutRequest(string UsuarioId, string Motivo);
 public record FerramentaUpdateRequest(string? Descricao, string? Setor, string? Status, int? VidaUtil, string? CodigoBarras);
+
 public class SmtpSettings {
     public string Host { get; set; } = "";
     public int Port { get; set; } = 587;
@@ -707,7 +671,9 @@ public class SmtpSettings {
     public string? Password { get; set; }
     public string? From { get; set; }
 }
+
 public record AvisoRequest(int FerramentaId, string UsuarioId, string? Mensagem);
+
 public class AvisoPendente {
     public int Id { get; set; }
     public int FerramentaId { get; set; }

@@ -22,12 +22,40 @@
         td { padding: 15px; border-bottom: 1px solid #222; font-size: 14px; }
         .container-center { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; }
         .main-card { background: var(--card); border: 1px solid #222; padding: 50px; border-radius: 25px; width: 500px; text-align: center; position: relative; }
-        .laser-line { position: absolute; width: 95%; height: 2px; background: var(--tsea-red); box-shadow: 0 0 12px var(--tsea-red); top: 55%; left: 2.5%; pointer-events: none; z-index: 0; }
+        .laser-line {
+            position: absolute;
+            width: 92%;
+            height: 2px;
+            background: var(--tsea-red);
+            box-shadow: 0 0 8px var(--tsea-red), 0 0 20px var(--tsea-red), 0 0 40px rgba(230,0,0,0.4);
+            left: 4%;
+            pointer-events: none;
+            z-index: 2;
+            animation: laserScan 2s ease-in-out infinite;
+        }
+        @keyframes laserScan {
+            0%   { top: 15%; opacity: 1; }
+            45%  { top: 80%; opacity: 1; }
+            50%  { top: 80%; opacity: 0.3; }
+            55%  { top: 80%; opacity: 1; }
+            100% { top: 15%; opacity: 1; }
+        }
+        .laser-wrapper {
+            position: relative;
+            overflow: hidden;
+            border-radius: 6px;
+            display: block;
+        }
+        .laser-wrapper input {
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+        }
         .input-scan { position: relative; z-index: 1; background: transparent; border: 1px solid #333; color: white; padding: 18px; text-align: center; font-size: 1.4rem; width: 100%; margin-top: 20px; border-radius: 8px; }
         .btn-cadastro { background: none; border: 1px dashed #555; color: #888; padding: 10px; margin-top: 30px; cursor: pointer; border-radius: 5px; width: 100%; transition: 0.3s; }
         .btn-cadastro:hover { border-color: var(--tsea-red); color: white; }
-        .bell-btn { background: none; border: none; font-size: 20px; cursor: pointer; position: relative; color: white; }
-        .alert-dot { position: absolute; top: 0; right: 0; width: 10px; height: 10px; background: red; border-radius: 50%; }
+        .bell-btn { background: none; border: none; font-size: 20px; cursor: pointer; position: relative; color: white; display: inline-flex; align-items: center; }
+        .alert-dot { position: absolute; top: 0; right: 0; width: 10px; height: 10px; background: red; border-radius: 50%; box-shadow: 0 0 6px red; }
         .session-timer { color: var(--yellow); font-family: monospace; font-weight: bold; }
         #modalNotificacao { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 350px; background: #111; border: 1px solid red; padding: 20px; z-index: 2000; display: none; }
         /* No seu <style> */
@@ -132,6 +160,34 @@
     // --- CONFIGURAÇÃO BACKEND ---
     const API_URL = "http://localhost:5045"; // Ajuste para a porta do seu .NET
 
+    function toggleSenha() {
+        var pwd = document.getElementById('passwordLogin');
+        var btn = pwd ? pwd.parentElement.querySelector('button') : null;
+        if (!pwd) return;
+        if (pwd.type === 'password') {
+            pwd.type = 'text';
+            if (btn) btn.style.color = '#e60000';
+        } else {
+            pwd.type = 'password';
+            if (btn) btn.style.color = '#aaa';
+        }
+        pwd.focus();
+    }
+
+    function toggleCadSenhaFn() {
+        var pwd = document.getElementById('cadSenha');
+        var btn = pwd ? pwd.parentElement.querySelector('button') : null;
+        if (!pwd) return;
+        if (pwd.type === 'password') {
+            pwd.type = 'text';
+            if (btn) btn.style.color = '#e60000';
+        } else {
+            pwd.type = 'password';
+            if (btn) btn.style.color = '#aaa';
+        }
+        pwd.focus();
+    }
+
     let ativos = []; // Agora será preenchido pelo banco
     let currentUser = "";
     let currentUserId = ""; // Guardar o crachá para movimentações
@@ -142,6 +198,40 @@
     let ativosDashboardBackup = [];
     let notificacaoTimer = null;
     let notificacaoAtiva = false;
+    let adminPollInterval = null;
+
+    // Polling do admin — verifica ferramentas atrasadas a cada 15 segundos
+    function iniciarPollingAdmin() {
+        if (adminPollInterval) clearInterval(adminPollInterval);
+        verificarNotificacoesAdmin(); // roda imediatamente
+        adminPollInterval = setInterval(verificarNotificacoesAdmin, 15000);
+    }
+
+    function pararPollingAdmin() {
+        if (adminPollInterval) clearInterval(adminPollInterval);
+        adminPollInterval = null;
+    }
+
+    async function verificarNotificacoesAdmin() {
+        // Só roda se o admin estiver logado
+        if (!currentUser || !currentUserId) return;
+        try {
+            const res = await fetch(`${API_URL}/ferramentas`);
+            if (!res.ok) return;
+            const ferramentas = await res.json();
+            const temAtrasado = ferramentas.some(f => {
+                const status = (f.status || f.Status || '').toUpperCase();
+                return status === 'ATRASADO' || status === 'EM_USO';
+            });
+            // Verifica se há movimentações abertas (EM_USO) há mais de X tempo
+            const temEmUso = ferramentas.some(f => {
+                return (f.status || f.Status || '').toUpperCase() === 'EM_USO';
+            });
+            atualizarBellBadge(notificacaoAtiva || temEmUso);
+        } catch (err) {
+            // silencioso — não interrompe o fluxo
+        }
+    }
     let ferramentaAtrasada = null;
 
     // ... (suas funções carregarAtivos, mostrarAdmin, etc)
@@ -156,8 +246,9 @@
     }
 
     const filtrados = ativosBackup.filter(f => {
-        const cod = (f.codigoBarras || f.CodigoBarras || "").toString().toUpperCase();
-        return cod.includes(bipado);
+        const cod  = (f.CodigoBarras || f.codigoBarras || ("TSEA-" + String(f.Id || f.id).padStart(3,"0"))).toString().toUpperCase();
+        const desc = (f.descricao || f.Descricao || "").toString().toUpperCase();
+        return cod.includes(bipado) || desc.includes(bipado);
     });
 
     renderizarTabelaOficina(filtrados);
@@ -237,7 +328,11 @@ function filtrarBusca(termo) {
 function atualizarBellBadge(tem) {
     const bell = document.getElementById('bellButton');
     if (!bell) return;
-    bell.innerHTML = tem ? `🔔 <span class="alert-dot"></span>` : '🔔';
+    bell.style.position = 'relative';
+    bell.style.fontSize = '22px';
+    bell.innerHTML = tem
+        ? `🔔<span style="position:absolute;top:2px;right:2px;width:10px;height:10px;background:red;border-radius:50%;box-shadow:0 0 6px red;display:block;"></span>`
+        : `🔔`;
 }
 
 function abrirNotificacaoAtraso() {
@@ -352,12 +447,34 @@ async function marcarAvisoLido(id) {
 
 async function enviarAvisoAdmin() {
     if (!ferramentaAtrasada) return;
-    const operadorId = ferramentaAtrasada.colaboradorId || ferramentaAtrasada.ColaboradorId || '';
+
     const descricao = ferramentaAtrasada.descricao || ferramentaAtrasada.Descricao || 'ferramenta';
-    const codigo = ferramentaAtrasada.codigoBarras || ferramentaAtrasada.CodigoBarras || `ID ${ferramentaAtrasada.id || ferramentaAtrasada.Id}`;
+    const codigo    = ferramentaAtrasada.codigoBarras || ferramentaAtrasada.CodigoBarras ||
+                      ("TSEA-" + String(ferramentaAtrasada.id || ferramentaAtrasada.Id).padStart(3,"0"));
+    const nomeColaborador = ferramentaAtrasada.colaborador || ferramentaAtrasada.Colaborador || '';
+
+    // Tenta pegar o ID direto do objeto
+    let operadorId = ferramentaAtrasada.colaboradorId || ferramentaAtrasada.ColaboradorId ||
+                     ferramentaAtrasada.usuarioId     || ferramentaAtrasada.UsuarioId || '';
+
+    // Se não veio o ID, busca o usuário pelo nome para pegar o CodigoBarras
+    if (!operadorId && nomeColaborador) {
+        try {
+            const resUsuarios = await fetch(`${API_URL}/usuarios`);
+            if (resUsuarios.ok) {
+                const usuarios = await resUsuarios.json();
+                const usuario = usuarios.find(u =>
+                    (u.nome || u.Nome || '').toUpperCase() === nomeColaborador.toUpperCase()
+                );
+                if (usuario) operadorId = usuario.codigoBarras || usuario.CodigoBarras || '';
+            }
+        } catch (err) {
+            console.warn('Erro ao buscar usuário pelo nome:', err);
+        }
+    }
 
     if (!operadorId) {
-        alert('Não foi possível enviar o aviso: identificador do operador não encontrado.');
+        alert(`❌ Não foi possível encontrar o código do operador "${nomeColaborador}". Verifique se ele está cadastrado.`);
         return;
     }
 
@@ -484,103 +601,180 @@ async function cadastrarNoBanco() {
 
 async function realizarLogin() {
     const barcode = document.getElementById('inputLogin').value;
-    
-    const res = await fetch(`${API_URL}/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barcode: barcode })
-    });
+    if (!barcode) return;
 
-    if (res.ok) {
-        const dados = await res.json();
-        
-        // SALVA OS DADOS NA VARIÁVEL GLOBAL
-        usuarioLogado = {
-            nome: dados.nome,
-            tipo: dados.tipo,
-            barcode: barcode
-        };
+    try {
+        const res = await fetch(`${API_URL}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            // CORREÇÃO: "Barcode" com B maiúsculo idêntico ao record do C#
+            body: JSON.stringify({ Barcode: barcode }) 
+        });
 
-        if (usuarioLogado.tipo === 'ADMIN') {
-            mostrarAdmin();
+        if (res.ok) {
+            const dados = await res.json();
+            
+            usuarioLogado = {
+                nome: dados.nome,
+                tipo: dados.tipo,
+                barcode: barcode
+            };
+
+            // Guarda informações de sessão
+            localStorage.setItem("usuarioId", barcode);
+            localStorage.setItem("setorUsuario", dados.tipo);
+
+            if (usuarioLogado.tipo === 'ADMIN') {
+                mostrarAdmin();
+            } else {
+                mostrarOperador();
+            }
         } else {
-            mostrarOperador();
+            alert("Usuário não cadastrado ou credenciais incorretas!");
         }
-    } else {
-        alert("Usuário não encontrado!");
+    } catch (error) {
+        console.error("Erro ao realizar login:", error);
+        alert("Erro de comunicação com o servidor.");
     }
 }
     // --- FUNÇÕES DE CONEXÃO (FETCH) ---
 
 async function loginBackend(barcode) {
+
     let cracha  = normalizeScannerBarcode(barcode || document.getElementById('barcode')?.value || '');
+
     const senha   = document.getElementById('passwordLogin')?.value || '';
+
     const passwordWrapper = document.getElementById('passwordWrapper');
+
     const emailArea = document.getElementById('emailCadastroArea');
+
     const emailInput = document.getElementById('emailCadastro');
+
     const barcodeInput = document.getElementById('barcode');
 
+
+
     if (!cracha) {
+
         alert('Digite o crachá antes de entrar.');
+
         return;
+
     }
+
+
 
     const isAdmin = cracha.endsWith('A');
 
+
+
     // ✅ Se a área de email está visível, o admin clicou ENTRAR para finalizar o cadastro
+
     if (isAdmin && emailArea && emailArea.style.display !== 'none') {
+
         const email = emailInput?.value.trim();
+
         if (!email) {
+
             alert('Informe o email para continuar o cadastro.');
+
             emailInput?.focus();
+
             return;
+
         }
+
+
 
         // Tenta cadastrar o admin com os dados fornecidos
+
         const nomeInput = prompt('Informe seu nome completo para o cadastro:');
+
         if (!nomeInput) return;
 
+
+
         try {
+
             const res = await fetch(`${API_URL}/usuarios/cadastrar`, {
+
                 method: 'POST',
+
                 headers: { 'Content-Type': 'application/json' },
+
                 body: JSON.stringify({
+
                     nome: nomeInput.trim(),
+
                     barcode: cracha,
+
                     setor: 'ADMIN',
+
                     password: senha,
+
                     email: email
+
                 })
+
             });
 
+
+
             if (res.ok) {
+
                 alert('✅ Admin cadastrado com sucesso! Faça o login agora.');
+
                 emailArea.style.display = 'none';
+
                 emailInput.value = '';
+
             } else {
+
                 const erro = await res.text();
+
                 alert('❌ Erro ao cadastrar: ' + erro);
+
             }
+
         } catch (err) {
+
             alert('❌ Erro de conexão com o servidor.');
+
         }
+
         return;
+
     }
 
+
+
     // Fluxo normal de login
+
     try {
+
         const response = await fetch(`${API_URL}/login`, {
+
             method: 'POST',
+
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+
             body: JSON.stringify({ Barcode: cracha, Password: senha })
+
         });
 
-        if (response.ok) {
+
+
+       if (response.ok) {
             const data = await response.json();
             currentUser   = data.nome;
             currentUserId = cracha;
 
             usuarioLogado = { nome: data.nome, tipo: data.tipo, barcode: cracha };
+
+            // 🌟 ADICIONE ESTAS DUAS LINHAS AQUI PARA SALVAR OS DADOS DO OPERADOR:
+            localStorage.setItem("usuarioId", cracha.toUpperCase());
+            localStorage.setItem("setorUsuario", data.tipo.toUpperCase());
 
             if (data.tipo === 'ADMIN') {
                 mostrarAdmin();
@@ -588,71 +782,137 @@ async function loginBackend(barcode) {
                 startTimer();
                 mostrarOperador();
             }
+    
         } else {
+
             const texto = await response.text();
 
+
+
             // ✅ Se for admin não cadastrado, mostra campo de email inline
+
             if (isAdmin && (texto.includes('não cadastrado') || response.status === 404)) {
+
                 if (!senha) {
+
                     alert('Para cadastrar um novo admin, preencha também a senha acima.');
+
                     document.getElementById('passwordLogin')?.focus();
+
                     return;
+
                 }
+
                 if (emailArea) {
+
                     emailArea.style.display = 'block';
+
                     emailInput?.focus();
+
                 }
+
                 return;
+
             }
+
+
 
             // Se for admin e faltar senha, mostra o campo de senha
+
             if (isAdmin && texto.includes('Senha obrigatória para login de administrador.')) {
+
                 if (passwordWrapper) {
+
                     passwordWrapper.style.display = 'block';
+
                 }
+
                 document.getElementById('passwordLogin')?.focus();
+
                 return;
+
             }
+
+
 
             // Tentativa de fallback se o leitor inseriu um A extra no final e o usuário não existir
+
             if (cracha.endsWith('A') && texto.includes('Usuário não cadastrado.')) {
+
                 const crachaSemA = cracha.slice(0, -1);
+
                 if (crachaSemA) {
+
                     const fallbackResponse = await fetch(`${API_URL}/login`, {
+
                         method: 'POST',
+
                         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+
                         body: JSON.stringify({ Barcode: crachaSemA, Password: senha })
+
                     });
 
+
+
                     if (fallbackResponse.ok) {
+
                         const fallbackData = await fallbackResponse.json();
+
                         currentUser   = fallbackData.nome;
+
                         currentUserId = crachaSemA;
 
+
+
                         usuarioLogado = { nome: fallbackData.nome, tipo: fallbackData.tipo, barcode: crachaSemA };
+
                         if (barcodeInput) barcodeInput.value = crachaSemA;
 
+
+
                         if (fallbackData.tipo === 'ADMIN') {
+
                             mostrarAdmin();
+
                         } else {
+
                             startTimer();
+
                             mostrarOperador();
+
                         }
+
                         return;
+
                     }
 
+
+
                     const fallbackTexto = await fallbackResponse.text();
+
                     alert(fallbackTexto || texto || 'CRACHÁ NÃO ENCONTRADO OU SENHA INVÁLIDA.');
+
                     return;
+
                 }
+
             }
 
+
+
             alert(texto || 'CRACHÁ NÃO ENCONTRADO OU SENHA INVÁLIDA.');
+
         }
+
     } catch (error) {
+
         console.error('Erro na requisição:', error);
+
         alert('Erro de conexão. O servidor está rodando na porta 5045?');
+
     }
+
 }
 
 async function esqueciSenha() {
@@ -815,62 +1075,71 @@ async function realizarMovimentacao(tipo, ferramentaId) {
     const rota = tipo === 'RETIRAR' ? 'retirar' : 'devolver';
     const feedback = document.getElementById('feedback');
     
-    const rawValue = ferramentaId.toString().trim();
-    const apenasNumeros = rawValue.replace(/\D/g, '');
-    const idNumerico = apenasNumeros && /^\d+$/.test(rawValue) ? parseInt(rawValue, 10) : NaN;
-    const codigoUpper = rawValue.toUpperCase();
+    const rawValue = ferramentaId.toString().trim().toUpperCase();
 
-    const payload = {
-        UsuarioId: currentUserId,
-        FerramentaCodigoBarras: rawValue,
-    };
+    // Busca a ferramenta pelo CodigoBarras OU pelo ID numérico extraído de TSEA-00X
+    let ferramentaEncontrada = null;
+    try {
+        const resFerramentas = await fetch(`${API_URL}/ferramentas`);
+        if (resFerramentas.ok) {
+            const todasFerramentas = await resFerramentas.json();
 
-    if (!Number.isNaN(idNumerico)) {
-        payload.FerramentaId = idNumerico;
+            // Extrai número do padrão TSEA-001 → 1
+            const matchTsea = rawValue.match(/^TSEA-0*(\d+)$/);
+            const idExtraido = matchTsea ? parseInt(matchTsea[1], 10) : NaN;
+
+            ferramentaEncontrada = todasFerramentas.find(f => {
+                const codigo = String(f.codigoBarras || f.CodigoBarras || '').trim().toUpperCase();
+                const idBanco = f.id || f.Id;
+
+                // Bate pelo código de barras
+                if (codigo && codigo === rawValue) return true;
+                // Bate pelo ID extraído do padrão TSEA-001
+                if (!isNaN(idExtraido) && idBanco == idExtraido) return true;
+                // Bate pelo número puro digitado
+                if (/^\d+$/.test(rawValue) && idBanco == parseInt(rawValue, 10)) return true;
+                return false;
+            });
+        }
+    } catch (err) {
+        console.warn('Erro ao buscar ferramentas para validação:', err);
     }
 
-    // Validação local antes de enviar para a API
+    if (!ferramentaEncontrada) {
+        feedback.innerText = "❌ Ferramenta não encontrada. Verifique o código de barras.";
+        feedback.style.color = "red";
+        return;
+    }
+
+    // Validações antes de enviar
     if (tipo === 'RETIRAR') {
-        try {
-            const resFerramentas = await fetch(`${API_URL}/ferramentas`);
-            if (resFerramentas.ok) {
-                const todasFerramentas = await resFerramentas.json();
-                const correspondentes = todasFerramentas.filter(f => {
-                    const idStr = String(f.Id || f.id || '');
-                    const codigo = String(f.CodigoBarras || f.codigoBarras || '').trim().toUpperCase();
-                    return idStr === rawValue || codigo === codigoUpper;
-                });
+        const setor  = String(ferramentaEncontrada.setor  || ferramentaEncontrada.Setor  || '').trim().toUpperCase();
+        const status = String(ferramentaEncontrada.status || ferramentaEncontrada.Status || '').trim().toUpperCase();
 
-                if (correspondentes.length > 1) {
-                    alert('❌ Existem uma ferramenta com este código/ID. Remova a duplicata ou informe o administrador.');
-                    return;
-                }
-
-                if (correspondentes.length === 1) {
-                    const ferramenta = correspondentes[0];
-                    const setor = String(ferramenta.Setor || ferramenta.setor || '').trim().toUpperCase();
-                    if (setor === 'ALMOXARIFADO') {
-                        alert('❌ Não é possível pegar, pois a ferramenta está no almoxerifado.');
-                        return;
-                    }
-
-                    const status = String(ferramenta.Status || ferramenta.status || '').trim().toUpperCase();
-                    if (status === 'EM_USO') {
-                        alert('❌ Não é possível pegar, pois a ferramenta já está em uso.');
-                        return;
-                    }
-                    if (status === 'MANUTENCAO') {
-                        alert('❌ Não é possível pegar, pois a ferramenta está em manutenção.');
-                        return;
-                    }
-                }
-            }
-        } catch (err) {
-            console.warn('Não foi possível validar localmente a ferramenta antes da movimentação:', err);
+        if (setor === 'ALMOXERIFADO' || setor === 'GERAL' || setor === '') {
+            feedback.innerText = "❌ Esta ferramenta está no almoxarifado. Solicite ao administrador para movê-la.";
+            feedback.style.color = "orange";
+            return;
+        }
+        if (status === 'EM_USO') {
+            feedback.innerText = "❌ Esta ferramenta já está em uso por outro colaborador.";
+            feedback.style.color = "red";
+            return;
+        }
+        if (status === 'MANUTENCAO') {
+            feedback.innerText = "❌ Esta ferramenta está em manutenção e não pode ser retirada.";
+            feedback.style.color = "red";
+            return;
         }
     }
 
-    // LOG PARA DEBUG: Abra o F12 no navegador para ver isso
+    // Monta payload com o ID numérico real encontrado
+    const payload = {
+        UsuarioId: currentUserId,
+        FerramentaId: ferramentaEncontrada.id || ferramentaEncontrada.Id,
+        FerramentaCodigoBarras: rawValue,
+    };
+
     console.log("Enviando:", payload);
 
     try {
@@ -881,14 +1150,12 @@ async function realizarMovimentacao(tipo, ferramentaId) {
         });
         
         let textoResposta = await response.text();
-
         try {
             const json = JSON.parse(textoResposta);
             if (json.erro) textoResposta = json.erro;
             else if (json.mensagem) textoResposta = json.mensagem;
-        } catch (err) {
-            // não é JSON, usar o texto original
-        }
+            else if (json.colaborador) textoResposta = `Retirado por ${json.colaborador}`;
+        } catch (err) { /* texto simples, ok */ }
 
         if (response.ok) {
             feedback.innerText = "✅ SUCESSO: " + textoResposta;
@@ -920,7 +1187,7 @@ async function carregarAtivos() {
 
 function getSetorLabel(f) {
     const setor = (f.setor || f.Setor || "GERAL").toString().trim().toUpperCase();
-    return setor === "GERAL" ? "ALMOXERIFADO" : setor;
+    return setor === "GERAL" ? "ALMOXARIFADO" : setor;
 }
 
 function renderizarTabelaOficina(lista) {
@@ -930,7 +1197,7 @@ function renderizarTabelaOficina(lista) {
 
     lista.forEach(f => {
         // Pega o Código de Barras (tenta todas as variações vindo do C#)
-        const codigoBarras = f.codigoBarras || f.CodigoBarras || f.usuarioId || f.id;
+        const codigoBarras = f.CodigoBarras || f.codigoBarras || `TSEA-${String(f.Id || f.id).padStart(3,'0')}`;
         
         // Pega a Descrição (o nome real é 'descricao', os '...' eram apenas visual do console)
         const nomeDescricao = f.descricao || f.Descricao || "Sem Descrição";
@@ -963,52 +1230,121 @@ function renderizarTabelaOficina(lista) {
 }
 // Filtro em tempo real para a oficina
 function filtrarOficina(termo) {
-    const busca = termo.toUpperCase();
-    const filtrados = ativosBackup.filter(f => 
-        (f.descricao || f.Descricao).toUpperCase().includes(busca) || 
-        (f.id || f.Id).toString().includes(busca)
-    );
+    const busca = termo.toUpperCase().trim();
+    if (busca === "") {
+        renderizarTabelaOficina(ativosBackup);
+        return;
+    }
+    const filtrados = ativosBackup.filter(f => {
+        const codigo = (f.CodigoBarras || f.codigoBarras || ("TSEA-" + String(f.Id || f.id).padStart(3,"0"))).toUpperCase();
+        const desc   = (f.descricao || f.Descricao || "").toUpperCase();
+        return codigo.includes(busca) || desc.includes(busca);
+    });
     renderizarTabelaOficina(filtrados);
 }
     // Exemplo de como chamar o Logout no seu index.html
 // Função de Logout atualizada para enviar o motivo
-function fazerLogout() {
-    // 1. Pega os dados do usuário que salvamos no login
-    const usuarioId = localStorage.getItem("usuarioId") || "123A";
-    const setorUsuario = localStorage.getItem("setorUsuario"); // Pega se é ADMIN ou OPERADOR
+// Variável para controlar a checagem do botão
+let checarBotaoInterval = null;
 
-    console.log(`Tentando deslogar usuário. ID: ${usuarioId} | Setor: ${setorUsuario}`);
+function mostrarOverlayAguardandoBotao() {
+    // Remove overlay anterior se existir
+    const existente = document.getElementById('overlayLogout');
+    if (existente) existente.remove();
 
-    // 2. Se for ADMINISTRADOR, faz o logout silencioso (sem acionar o Arduino)
-    if (setorUsuario === "ADMIN") {
-        console.log("Admin saindo... Ignorando Arduino.");
-        localStorage.clear();
-        window.location.reload();
-        return; // Para a execução aqui e não chama o fetch do Arduino!
+    const overlay = document.createElement('div');
+    overlay.id = 'overlayLogout';
+    overlay.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.92); z-index: 9999;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        color: white; font-family: 'Segoe UI', sans-serif;
+    `;
+    overlay.innerHTML = `
+        <div style="font-size: 60px; margin-bottom: 20px;">🚨</div>
+        <h2 style="color: #ff0000; font-size: 1.6rem; margin-bottom: 10px;">ALERTA ACIONADO</h2>
+        <p style="color: #ccc; text-align: center; max-width: 380px; line-height: 1.6;">
+            Pressione o <strong style="color:white">botão físico</strong> no painel do Arduino
+            para confirmar a saída e fechar a porta.
+        </p>
+        <div style="margin-top: 30px; display: flex; align-items: center; gap: 12px; color: #888;">
+            <div style="width:14px; height:14px; border-radius:50%; background:#ff0000;
+                        animation: pulsar 1s infinite;"></div>
+            <span>Aguardando confirmação...</span>
+        </div>
+        <style>
+            @keyframes pulsar {
+                0%, 100% { opacity: 1; transform: scale(1); }
+                50%       { opacity: 0.3; transform: scale(0.7); }
+            }
+        </style>
+    `;
+    document.body.appendChild(overlay);
+}
+
+function removerOverlayAguardandoBotao() {
+    const overlay = document.getElementById('overlayLogout');
+    if (overlay) overlay.remove();
+}
+
+async function fazerLogout(motivo = "VOLUNTARIO") {
+    // 🌟 NOVA LÓGICA: Notifica o backend para tocar o buzzer antes de limpar a tela do front
+    try {
+        await fetch(`${API_URL}/logout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                usuarioId: currentUserId || localStorage.getItem("usuarioId") || "", 
+                motivo: motivo 
+            })
+        });
+    } catch (err) {
+        console.error("Não foi possível acionar o buzzer de logout no backend:", err);
     }
 
-    // 3. Se NÃO for Admin (ou seja, for OPERADOR), executa o logout normal que ativa o Arduino
-    fetch("http://localhost:5045/logout", { 
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            usuarioId: usuarioId,
-            motivo: "Voluntario"
-        })
-    })
-    .then(response => {
-        if (response.ok) {
-            console.log("Logout do Operador enviado ao C#!");
-            localStorage.clear();
-            window.location.reload();
-        } else {
-            console.error("Erro no logout do operador.");
+    // Reseta as variáveis de estado da sessão local
+    currentUser = "";
+    currentUserId = "";
+    usuarioLogado = null;
+    clearInterval(timerInterval);
+    pararPollingAdmin();
+    localStorage.removeItem("usuarioId");
+    localStorage.removeItem("setorUsuario");
+
+    // Redireciona o funcionário de volta para a tela de login
+    mostrarLogin();
+}
+// Função que pergunta ao backend se o botão do Arduino foi clicado
+function verificarConfirmacaoBotao() {
+    fetch(`http://localhost:5045/api/arduino/status-botao`)
+    .then(res => res.json())
+    .then(data => {
+        if (data.confirmado === true) {
+            console.log("[LOGOUT] Botão físico detectado! Deslogando da tela agora...");
+            clearInterval(checarBotaoInterval);
+            executarSaidaDefinitiva();
         }
     })
-    .catch(error => console.error("Erro na requisição:", error));
+    .catch(err => console.log("Aguardando liberação do botão no Arduino..."));
 }
+
+// Função que limpa a tela de verdade
+function executarSaidaDefinitiva() {
+    removerOverlayAguardandoBotao();
+    if (checarBotaoInterval) clearInterval(checarBotaoInterval);
+    localStorage.clear();
+    usuarioLogado = null;
+    currentUser = "";
+    currentUserId = "";
+    timeLeft = 600;
+    if (typeof timerInterval !== 'undefined') clearInterval(timerInterval);
+
+    // Limpa o app e vai para o login diretamente
+    document.getElementById('app').innerHTML = '';
+    mostrarLogin();
+}
+
 // Verifique se esta função está EXATAMENTE assim (com as crases ` `)
 function mostrarTelaCadastro() {
     document.getElementById('app').innerHTML = `
@@ -1020,8 +1356,8 @@ function mostrarTelaCadastro() {
                 <div id="adminFields" style="display:none; width: 100%;">
                     <input type="email" id="cadEmail" class="input-scan" placeholder="EMAIL (apenas ADMIN)" style="margin-top:10px; font-size:1rem; width: 100%; box-sizing: border-box;">
                     <div style="position:relative; width:100%; margin-top:10px;">
-                        <input type="password" id="cadSenha" class="input-scan" placeholder="SENHA (APENAS ADMIN)" style="font-size:1rem; width: 100%; box-sizing: border-box; padding-right:40px;">
-                        <button id="toggleCadSenha" type="button" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); border:none; background:transparent; color:#fff; font-size:1.2rem; cursor:pointer;">👁️</button>
+                        <input type="password" id="cadSenha" class="input-scan" placeholder="SENHA (APENAS ADMIN)" style="font-size:1rem; width: 100%; box-sizing: border-box; padding-right:56px;">
+                        <button type="button" onclick="toggleCadSenhaFn()" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); border:none; background:transparent; cursor:pointer; padding:8px; font-size:18px; color:#aaa; z-index:10; line-height:1;" title="Mostrar/ocultar senha">👁</button>
                     </div>
                     <small style="color:#777; display:block; margin-top:8px; text-align: center;">Digite o código terminado em A para criar um ADMIN; caso contrário, o usuário será OPERADOR.</small>
                 </div>
@@ -1030,18 +1366,6 @@ function mostrarTelaCadastro() {
             </div>
         </div>`;
     atualizarCamposAdminCadastro();
-
-    // Olhinho para mostrar/esconder senha no cadastro
-    const toggleCadSenha = document.getElementById('toggleCadSenha');
-    const cadSenhaInput = document.getElementById('cadSenha');
-    if (toggleCadSenha && cadSenhaInput) {
-        toggleCadSenha.addEventListener('click', () => {
-            const isHidden = cadSenhaInput.type === 'password';
-            cadSenhaInput.type = isHidden ? 'text' : 'password';
-            toggleCadSenha.textContent = isHidden ? '🙈' : '👁️';
-            cadSenhaInput.focus();
-        });
-    }
 
     // Detecção de scanner no campo crachá do cadastro
     const cadCrachaInput = document.getElementById('cadCracha');
@@ -1122,6 +1446,7 @@ async function carregarDadosDashboard() {
 }
 
 async function mostrarAdmin(filtroSetor = 'GERAL') {
+    iniciarPollingAdmin(); // inicia verificação periódica de notificações
     const res = await fetch(`${API_URL}/ferramentas`);
     const dadosResposta = res.ok ? await res.json() : await res.text();
     const dados = Array.isArray(dadosResposta) ? dadosResposta : [];
@@ -1188,8 +1513,8 @@ async function mostrarAdmin(filtroSetor = 'GERAL') {
                     <input type="text" id="inputBusca" placeholder="Bipe o Código de Barras..." 
                            class="search-input" style="width: 450px; background:#111; border:1px solid #333; color:white; padding:12px; border-radius:8px;">
                     
-                    <button id="bellButton" class="bell-btn" onclick="abrirNotificacaoAtraso()" title="Notificações">
-                        🔔 ${temAtraso ? '<span class="alert-dot"></span>' : ''}
+                    <button id="bellButton" class="bell-btn" onclick="abrirNotificacaoAtraso()" title="Notificações" style="position:relative; font-size:22px;">
+                        🔔${temAtraso ? '<span class="alert-dot" style="position:absolute;top:2px;right:2px;width:10px;height:10px;background:red;border-radius:50%;box-shadow:0 0 6px red;"></span>' : ''}
                     </button>
                 </div>
 
@@ -1256,7 +1581,7 @@ async function mostrarOficina() {
                     <nav>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()">📊 DASHBOARD</div>
                         <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()">🛠️ OFICINA</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXERIFADO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXARIFADO</div>
                     </nav>
                 </div>
                 <div style="border-top: 1px solid #222; padding-top: 20px;">
@@ -1327,7 +1652,7 @@ function abrirModalNovaFerramenta() {
                         <option value="MONTAGEM">MONTAGEM</option>
                         <option value="SOLDAGEM">SOLDAGEM</option>
                         <option value="USINAGEM">USINAGEM</option>
-                        <option value="ALMOXERIFADO">ALMOXERIFADO</option>
+                        <option value="ALMOXERIFADO">ALMOXARIFADO</option>
                     </select>
 
                     <div style="display: flex; gap: 10px;">
@@ -1402,10 +1727,11 @@ function abrirModalEdicao(id) {
         return;
     }
 
-    const codigoBarras = ferramenta.codigoBarras || ferramenta.CodigoBarras || '';
-    const descricao = ferramenta.descricao || ferramenta.Descricao || '';
-    const setor = ferramenta.setor || ferramenta.Setor || 'GERAL';
-    const status = ferramenta.status || ferramenta.Status || 'DISPONIVEL';
+    // .NET serializa como camelCase: codigoBarras, descricao, setor, status
+    const codigoBarras = ferramenta.codigoBarras || ferramenta.CodigoBarras || ("TSEA-" + String(ferramenta.id || ferramenta.Id).padStart(3,"0"));
+    const descricao    = ferramenta.descricao    || ferramenta.Descricao    || '';
+    const setor        = (ferramenta.setor       || ferramenta.Setor        || 'ALMOXERIFADO').toUpperCase();
+    const status       = (ferramenta.status      || ferramenta.Status       || 'DISPONIVEL').toUpperCase();
 
     if (status === 'EM_USO') {
         alert('Não é possível editar esta ferramenta porque ela está em uso.');
@@ -1428,7 +1754,7 @@ function abrirModalEdicao(id) {
                     <option value="MONTAGEM" ${setor === 'MONTAGEM' ? 'selected' : ''}>MONTAGEM</option>
                     <option value="SOLDAGEM" ${setor === 'SOLDAGEM' ? 'selected' : ''}>SOLDAGEM</option>
                     <option value="USINAGEM" ${setor === 'USINAGEM' ? 'selected' : ''}>USINAGEM</option>
-                    <option value="ALMOXERIFADO" ${setor === 'ALMOXERIFADO' ? 'selected' : ''}>ALMOXERIFADO</option>
+                    <option value="ALMOXERIFADO" ${setor === 'ALMOXERIFADO' ? 'selected' : ''}>ALMOXARIFADO</option>
                 </select>
 
                 <label style="display:block; margin-bottom: 5px; color: #aaa;">Status Atual</label>
@@ -1436,7 +1762,10 @@ function abrirModalEdicao(id) {
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
                     <button onclick="atualizarFerramenta('${id}')" style="background: #e60000; color: white; border: none; padding: 15px; border-radius: 5px; font-weight: bold; cursor: pointer;">SALVAR</button>
-                    <button onclick="colocarEmManutencao('${id}')" style="background: #ff9900; color: black; border: none; padding: 15px; border-radius: 5px; font-weight: bold; cursor: pointer;">MANUTENÇÃO</button>
+                    ${status === 'MANUTENCAO'
+                        ? `<button onclick="tirarDaManutencao('${id}')" style="background: #00aa44; color: white; border: none; padding: 15px; border-radius: 5px; font-weight: bold; cursor: pointer;">✅ TIRAR DA MANUTENÇÃO</button>`
+                        : `<button onclick="colocarEmManutencao('${id}')" style="background: #ff9900; color: black; border: none; padding: 15px; border-radius: 5px; font-weight: bold; cursor: pointer;">🔧 MANUTENÇÃO</button>`
+                    }
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <button onclick="excluirFerramenta('${id}')" style="flex: 1; background: #333; color: white; border: none; padding: 15px; border-radius: 5px; cursor: pointer;">EXCLUIR</button>
@@ -1514,6 +1843,29 @@ async function colocarEmManutencao(id) {
         } else {
             const erro = await res.text();
             alert('❌ Erro ao atualizar para manutenção: ' + erro);
+        }
+    } catch (err) {
+        alert('❌ Erro de conexão com o servidor.');
+    }
+}
+
+async function tirarDaManutencao(id) {
+    if (!confirm('Deseja marcar esta ferramenta como DISPONÍVEL?')) return;
+
+    try {
+        const res = await fetch(`${API_URL}/ferramentas/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ Status: 'DISPONIVEL' })
+        });
+
+        if (res.ok) {
+            alert('✅ Ferramenta disponível novamente!');
+            document.getElementById('modalCadastro').remove();
+            mostrarOficina();
+        } else {
+            const erro = await res.text();
+            alert('❌ Erro ao atualizar: ' + erro);
         }
     } catch (err) {
         alert('❌ Erro de conexão com o servidor.');
@@ -1626,27 +1978,35 @@ function renderizarTabelaAlmoxerifado(lista) {
         return;
     }
 
-    corpo.innerHTML = lista.map(f => `
+    corpo.innerHTML = lista.map(f => {
+        const codAlm = f.CodigoBarras || f.codigoBarras || ("TSEA-" + String(f.Id || f.id).padStart(3,"0"));
+        const descAlm = f.descricao || f.Descricao || "Sem descrição";
+        return `
         <tr style="border-bottom: 1px solid #222;">
             <td style="padding: 12px; color: #e60000; font-weight: bold; font-family: monospace;">
-                ${f.codigoBarras || f.CodigoBarras || f.codigo || f.Codigo || f.id || f.Id}
+                ${codAlm}
             </td>
             <td style="padding: 12px; color: #ddd;">
-                ${f.descricao || f.Descricao || "Sem descrição"}
+                ${descAlm}
             </td>
             <td style="padding: 12px; text-align: center;">
-                <button onclick="abrirModalRetiradaAlmoxerifado(${f.id || f.Id}, '${f.codigoBarras || f.CodigoBarras || f.codigo || f.Codigo || f.id || f.Id}', '${f.descricao || f.Descricao || "Ferramenta"}')" 
+                <button onclick="abrirModalRetiradaAlmoxerifado(${f.id || f.Id}, '${codAlm}', '${descAlm}')" 
                         style="background: #e60000; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold;">
                     RETIRAR
                 </button>
             </td>
-        </tr>`).join('');
+        </tr>`;
+    }).join('');
 }
 
 function filtrarAlmoxerifado(termo) {
-    const busca = termo.toUpperCase();
+    const busca = termo.toUpperCase().trim();
+    if (busca === "") {
+        renderizarTabelaAlmoxerifado(ativosBackup);
+        return;
+    }
     const filtrados = ativosBackup.filter(f => {
-        const codigo = (f.codigoBarras || f.CodigoBarras || f.codigo || f.Codigo || f.id || f.Id || "").toString().toUpperCase();
+        const codigo   = (f.CodigoBarras || f.codigoBarras || ("TSEA-" + String(f.Id || f.id).padStart(3,"0"))).toString().toUpperCase();
         const descricao = (f.descricao || f.Descricao || "").toString().toUpperCase();
         return codigo.includes(busca) || descricao.includes(busca);
     });
@@ -1678,7 +2038,7 @@ async function mostrarAlmoxerifado() {
                     <nav>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()">📊 DASHBOARD</div>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()">🛠️ OFICINA</div>
-                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXERIFADO</div>
+                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXARIFADO</div>
                     </nav>
                 </div>
                 <div style="border-top: 1px solid #222; padding-top: 20px;">
@@ -1690,13 +2050,8 @@ async function mostrarAlmoxerifado() {
             <div style="flex: 1; padding: 30px; overflow-y: auto;">
                 <div style="margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 260px;">
-                        <h1 style="color: white; margin: 0 0 10px 0;">📦 Almoxerifado</h1>
-                        <p style="color: #888; margin: 0 0 20px 0;">Ferramentas guardadas no almoxerifado</p>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <button id="bellButton" class="bell-btn" onclick="abrirNotificacaoAtraso()" title="Notificações">
-                            🔔
-                        </button>
+                        <h1 style="color: white; margin: 0 0 10px 0;">📦 Almoxarifado</h1>
+                        <p style="color: #888; margin: 0 0 20px 0;">Ferramentas guardadas no almoxarifado</p>
                     </div>
                 </div>
                 <div style="background: #111; border: 1px solid #222; padding: 12px 15px; border-radius: 12px; margin-top: 10px;">
@@ -1736,9 +2091,14 @@ async function mostrarAlmoxerifado() {
     // Scanner no campo de busca do almoxerifado
     const buscaAlmEl = document.getElementById('buscaAlmoxerifado');
     if (buscaAlmEl) {
-        scannerSafeInput(buscaAlmEl, (val) => filtrarAlmoxerifado(val));
-        buscaAlmEl.addEventListener('keyup', (e) => {
-            if (e.key !== 'Enter') filtrarAlmoxerifado(buscaAlmEl.value);
+        buscaAlmEl.focus();
+        // Filtra a cada tecla digitada (digitação manual e scanner)
+        buscaAlmEl.addEventListener('input', () => {
+            filtrarAlmoxerifado(buscaAlmEl.value);
+        });
+        // Scanner: dispara no Enter e limpa o campo para novo bip
+        scannerSafeInput(buscaAlmEl, (val) => {
+            filtrarAlmoxerifado(val);
         });
     }
 }
@@ -1748,7 +2108,7 @@ function abrirModalRetiradaAlmoxerifado(ferramentaId, codigo, descricao) {
     document.body.insertAdjacentHTML('beforeend', `
         <div id="modalRetirada" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 2000;">
             <div style="background: #111; padding: 30px; border-radius: 12px; border: 2px solid #e60000; width: 400px; color: white;">
-                <h2 style="margin-top: 0; color: #e60000; text-align: center;">📦 Retirar do Almoxerifado</h2>
+                <h2 style="margin-top: 0; color: #e60000; text-align: center;">📦 Retirar do Almoxarifado</h2>
                 
                 <div style="background: #000; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #333;">
                     <p style="margin: 5px 0; color: #aaa; font-size: 12px;">Código</p>
@@ -1764,7 +2124,7 @@ function abrirModalRetiradaAlmoxerifado(ferramentaId, codigo, descricao) {
                     </label>
                     <select id="setorDestino" style="width: 100%; padding: 12px; background: #000; border: 1px solid #e60000; color: white; border-radius: 6px; font-size: 14px;">
                         <option value="">-- Selecione o setor --</option>
-                        <option value="GERAL">ALMOXERIFADO</option>
+                        <option value="GERAL">ALMOXARIFADO</option>
                         <option value="SOLDAGEM">SOLDAGEM</option>
                         <option value="MONTAGEM">MONTAGEM</option>
                         <option value="USINAGEM">USINAGEM</option>
@@ -1862,17 +2222,17 @@ function mostrarLogin() {
         <div class="container-center">
             <div class="main-card">
                 <h1>TSEA <span style="color:red">SYSTEM</span></h1>
-                <div style="position:relative"><div class="laser-line"></div>
-                <input type="text" id="barcode" class="input-scan" placeholder="BIPE O CRACHÁ" autofocus></div>
+                <div class="laser-wrapper"><div class="laser-line"></div>
+                <input type="text" id="barcode" class="input-scan" placeholder="BIPE O CRACHÁ" autofocus style="position:relative; z-index:1;"></div>
 
-                <div id="passwordWrapper" style="position:relative; margin-top:10px; display:none;">
-                    <input type="password" id="passwordLogin" class="input-scan"
-                           placeholder="SENHA (Apenas ADMIN)"
-                           style="width:100%; padding-right:50px;"
-                           autocomplete="current-password">
-                    <button id="togglePassword" type="button" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); border:none; background:transparent; color:#fff; font-size:1.2rem; cursor:pointer;">
-                        
-                    </button>
+                <div id="passwordWrapper" style="margin-top:16px; display:none;">
+                    <div style="position:relative; width:100%;">
+                        <input type="password" id="passwordLogin" class="input-scan"
+                               placeholder="SENHA (Apenas ADMIN)"
+                               style="width:100%; box-sizing:border-box; padding-right:56px; text-align:center; letter-spacing:3px;"
+                               autocomplete="current-password">
+                        <button type="button" onclick="toggleSenha()" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); border:none; background:transparent; cursor:pointer; padding:8px; font-size:18px; color:#aaa; z-index:10; line-height:1;" title="Mostrar/ocultar senha">👁</button>
+                    </div>
                 </div>
 
                 <!-- ✅ NOVO: campo de email, aparece só quando admin não está cadastrado -->
@@ -1902,7 +2262,6 @@ function mostrarLogin() {
     const barcodeInput   = document.getElementById('barcode');
     const passwordInput  = document.getElementById('passwordLogin');
     const passwordWrapper = document.getElementById('passwordWrapper');
-    const togglePassword  = document.getElementById('togglePassword');
     const forgotButton   = document.getElementById('forgotPasswordButton');
 
     const updateLoginFields = () => {
@@ -1964,15 +2323,6 @@ function mostrarLogin() {
         barcodeInput.focus();
     }
     if (passwordInput) passwordInput.addEventListener('keydown', loginOnEnter);
-    if (togglePassword) {
-        togglePassword.addEventListener('click', () => {
-            if (!passwordInput) return;
-            const isHidden = passwordInput.type === 'password';
-            passwordInput.type = isHidden ? 'text' : 'password';
-            togglePassword.textContent = isHidden ? '🙈' : '👁️';
-            passwordInput.focus();
-        });
-    }
 }
     function mostrarOperador() {
         document.getElementById('app').innerHTML = `
@@ -1982,7 +2332,7 @@ function mostrarLogin() {
                     <strong>${currentUser}</strong>
                 </div>
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <button id="bellButton" class="bell-btn" onclick="abrirNotificacaoAtrasoOperador()" title="Notificações">
+                    <button id="bellButton" class="bell-btn" onclick="abrirNotificacaoAtrasoOperador()" title="Notificações" style="position:relative; font-size:22px;">
                         🔔
                     </button>
                     <button class="btn-logout" onclick="mostrarLogin()">SAIR</button>
@@ -2018,11 +2368,12 @@ function mostrarLogin() {
         <div class="container-center">
             <div class="main-card">
                 <h2>MODO ${m}</h2>
-                <div style="position:relative">
+                <p style="color:#888; font-size:13px; margin-bottom:0;">Bipe o código de barras da ferramenta</p>
+                <div class="laser-wrapper" style="margin-top:10px;">
                     <div class="laser-line"></div>
-                    <input type="text" id="bipOp" class="input-scan" placeholder="BIPE A FERRAMENTA" autofocus>
+                    <input type="text" id="bipOp" class="input-scan" placeholder="Ex: TSEA-001" autofocus>
                 </div>
-                <p id="feedback" style="font-weight:bold; margin-top:10px;"></p>
+                <p id="feedback" style="font-weight:bold; margin-top:10px; min-height:24px;"></p>
             </div>
         </div>`;
 
@@ -2035,25 +2386,30 @@ function mostrarLogin() {
     });
 
     inputBip.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            // Remove char extra do scanner
-            if (_keyTimesBip.length > 0 && (Date.now() - _keyTimesBip[_keyTimesBip.length - 1]) < 100) {
-                if (e.target.value.length > 1)
-                    e.target.value = e.target.value.slice(0, -1);
-            }
-            _keyTimesBip = [];
-            const valorDigitado = e.target.value.trim();
-            
-            if (valorDigitado === "") {
-                document.getElementById('feedback').innerText = "POR FAVOR, BIPE UMA FERRAMENTA!";
-                document.getElementById('feedback').style.color = "orange";
-                return;
-            }
+        if (e.key !== 'Enter') return;
 
-            // Chama a movimentação passando o valor capturado AGORA
-            realizarMovimentacao(m, valorDigitado);
-            e.target.value = ""; // Limpa o campo para o próximo bip
+        // Remove char extra do scanner (Enter muito rápido após última tecla)
+        if (_keyTimesBip.length > 0 && (Date.now() - _keyTimesBip[_keyTimesBip.length - 1]) < 100) {
+            if (e.target.value.length > 1)
+                e.target.value = e.target.value.slice(0, -1);
         }
+        _keyTimesBip = [];
+
+        let valorDigitado = e.target.value.trim().toUpperCase();
+        e.target.value = "";
+
+        if (valorDigitado === "") {
+            document.getElementById('feedback').innerText = "⚠️ Bipe ou digite o código de barras da ferramenta!";
+            document.getElementById('feedback').style.color = "orange";
+            return;
+        }
+
+        // Se o operador digitou só o número (1, 2, 3...), converte para TSEA-001
+        if (/^\d+$/.test(valorDigitado)) {
+            valorDigitado = "TSEA-" + valorDigitado.padStart(3, "0");
+        }
+
+        realizarMovimentacao(m, valorDigitado);
     });
 }
 
