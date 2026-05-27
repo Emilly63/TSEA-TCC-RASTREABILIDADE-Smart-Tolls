@@ -26,7 +26,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // Armazena tokens temporários de reset de senha
 var resetTokens = new Dictionary<string, (string Barcode, DateTime Expiry)>();
 
-// 🌟 INICIALIZA A PORTA SERIAL GLOBAL
+//  INICIALIZA A PORTA SERIAL GLOBAL
 ArduinoSerial.Inicializar();
 
 var app = builder.Build();
@@ -594,7 +594,7 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
     ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
     using var pkg = new ExcelPackage();
 
-    // ── Cores da marca TSEA ──
+    //  Cores da marca TSEA 
     var vermelho    = System.Drawing.Color.FromArgb(0xCC, 0x00, 0x00);
     var vermelhoClaro = System.Drawing.Color.FromArgb(0xFF, 0xE5, 0xE5);
     var cinzaHeader = System.Drawing.Color.FromArgb(0x1A, 0x1A, 0x1A);
@@ -607,10 +607,10 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
         "DIARIO" => "DIÁRIO", "MENSAL" => "MENSAL", "ANUAL" => "ANUAL", _ => tipo.ToUpper()
     };
 
-    // ╔══════════════════════════════╗
-    // ║  ABA 1 — RESUMO              ║
-    // ╚══════════════════════════════╝
-    var wsR = pkg.Workbook.Worksheets.Add("📊 Resumo");
+    // 
+    //   ABA 1 — RESUMO              
+    // 
+    var wsR = pkg.Workbook.Worksheets.Add(" Resumo");
     wsR.View.ShowGridLines = false;
     wsR.Column(1).Width = 36;
     wsR.Column(2).Width = 22;
@@ -734,10 +734,10 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
         }
     }
 
-    // ╔══════════════════════════════╗
-    // ║  ABA 2 — MOVIMENTAÇÕES       ║
-    // ╚══════════════════════════════╝
-    var wsMov = pkg.Workbook.Worksheets.Add("🔄 Movimentações");
+    // 
+    //   ABA 2 — MOVIMENTAÇÕES       
+    // 
+    var wsMov = pkg.Workbook.Worksheets.Add(" Movimentações");
     wsMov.View.ShowGridLines = false;
     wsMov.Row(1).Height = 42;
     wsMov.Cells["A1:J1"].Merge = true;
@@ -762,7 +762,7 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
         wsMov.Cells[movRow,4].Value  = m.Setor;
         wsMov.Cells[movRow,5].Value  = m.Colaborador;
         wsMov.Cells[movRow,6].Value  = m.DataRetirada.ToString("dd/MM/yyyy HH:mm");
-        wsMov.Cells[movRow,7].Value = (m.DataDevolucao != null) ? ((DateTime)m.DataDevolucao).ToString("dd/MM/yyyy HH:mm") : "—";
+        wsMov.Cells[movRow,7].Value  = m.DataDevolucao.HasValue ? m.DataDevolucao.Value.ToString("dd/MM/yyyy HH:mm") : "—";
         wsMov.Cells[movRow,8].Value  = m.DuracaoMinutos;
         wsMov.Cells[movRow,9].Value  = m.DevolvidaManualmente ? "SIM" : "NÃO";
         wsMov.Cells[movRow,10].Value = m.Status;
@@ -780,10 +780,10 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
         wsMov.Cells[r,8].Style.HorizontalAlignment  = ExcelHorizontalAlignment.Center;
     }
 
-    // ╔══════════════════════════════╗
-    // ║  ABA 3 — LOGS DE ACESSO      ║
-    // ╚══════════════════════════════╝
-    var wsLog = pkg.Workbook.Worksheets.Add("🔐 Logs de Acesso");
+    // 
+    //   ABA 3 — LOGS DE ACESSO      
+    // 
+    var wsLog = pkg.Workbook.Worksheets.Add(" Logs de Acesso");
     wsLog.View.ShowGridLines = false;
     wsLog.Row(1).Height = 42;
     wsLog.Cells["A1:H1"].Merge = true;
@@ -806,7 +806,7 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
         wsLog.Cells[logRow,2].Value = l.Colaborador;
         wsLog.Cells[logRow,3].Value = l.UsuarioId;
         wsLog.Cells[logRow,4].Value = l.DataEntrada.ToString("dd/MM/yyyy HH:mm");
-        wsLog.Cells[logRow,5].Value = (l.DataSaida != null) ? ((DateTime)l.DataSaida).ToString("dd/MM/yyyy HH:mm") : "Ainda logado";
+        wsLog.Cells[logRow,5].Value = l.DataSaida.HasValue ? l.DataSaida.Value.ToString("dd/MM/yyyy HH:mm") : "Ainda logado";
         wsLog.Cells[logRow,6].Value = l.DuracaoMinutos;
         wsLog.Cells[logRow,7].Value = l.MotivoSaida ?? "—";
         wsLog.Cells[logRow,8].Value = l.StatusAcesso;
@@ -819,10 +819,10 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
         wsLog.Cells[r,8].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
     }
 
-    // ╔══════════════════════════════════╗
-    // ║  ABA 4 — FERRAMENTAS ATRASADAS   ║
-    // ╚══════════════════════════════════╝
-    var wsAt = pkg.Workbook.Worksheets.Add("⚠️ Atrasadas");
+    // 
+    //   ABA 4 — FERRAMENTAS ATRASADAS   
+    // 
+    var wsAt = pkg.Workbook.Worksheets.Add(" Atrasadas");
     wsAt.View.ShowGridLines = false;
     wsAt.Row(1).Height = 42;
     wsAt.Cells["A1:F1"].Merge = true;
@@ -996,13 +996,13 @@ void EnviarComandoArduino(string comando)
 // CLASSES — devem ficar SEMPRE após o app.Run()
 // ============================================================
 
-// 🌟 CONTROLE DO STATUS DO BOTÃO
+//  CONTROLE DO STATUS DO BOTÃO
 public static class BotaoControle
 {
     public static bool ConfirmadoSaida { get; set; } = false;
 }
 
-// 🔌 CONEXÃO SERIAL GLOBAL
+//  CONEXÃO SERIAL GLOBAL
 public static class ArduinoSerial
 {
     public static SerialPort Porta = new SerialPort("COM5", 9600) { ReadTimeout = 150 };

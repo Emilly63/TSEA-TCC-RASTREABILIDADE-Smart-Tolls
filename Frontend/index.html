@@ -331,8 +331,8 @@ function atualizarBellBadge(tem) {
     bell.style.position = 'relative';
     bell.style.fontSize = '22px';
     bell.innerHTML = tem
-        ? `🔔<span style="position:absolute;top:2px;right:2px;width:10px;height:10px;background:red;border-radius:50%;box-shadow:0 0 6px red;display:block;"></span>`
-        : `🔔`;
+        ? `&#128276;<span style="position:absolute;top:2px;right:2px;width:10px;height:10px;background:red;border-radius:50%;box-shadow:0 0 6px red;display:block;"></span>`
+        : `&#128276;`;
 }
 
 function abrirNotificacaoAtraso() {
@@ -368,7 +368,7 @@ function abrirNotificacaoAtraso() {
             + '<div style="font-size:11px; color:#e60000; font-weight:bold; letter-spacing:1px; margin-bottom:6px;">AVISO</div>'
             + '<div style="color:white; font-size:14px; font-weight:bold; margin-bottom:4px;">Funcionario <span style="color:#e60000;">' + cracha + '</span> esta com a ferramenta</div>'
             + '<div style="color:#ddd; font-size:14px;">' + desc + ' <span style="color:#e60000; font-family:monospace;">(' + codigo + ')</span></div>'
-            + '<div style="margin-top:6px;"><span style="color:' + corStatus + '; font-size:11px; font-weight:bold;">● ' + status + '</span></div>'
+            + '<div style="margin-top:6px;"><span style="color:' + corStatus + '; font-size:11px; font-weight:bold;"> ' + status + '</span></div>'
             + '</div>';
     }).join('');
 
@@ -523,15 +523,15 @@ async function limparColaboradoresInvalidos() {
 
         if (res.ok) {
             const resposta = await res.json();
-            alert(`✅ ${resposta.mensagem}`);
+            alert(` ${resposta.mensagem}`);
             await mostrarAdmin();
         } else {
             const erro = await res.text();
-            alert(`❌ Erro: ${erro}`);
+            alert(` Erro: ${erro}`);
         }
     } catch (err) {
         console.error('Erro ao limpar colaboradores:', err);
-        alert('❌ Erro de conexão ao limpar colaboradores.');
+        alert(' Erro de conexão ao limpar colaboradores.');
     }
 }
 
@@ -677,7 +677,7 @@ async function loginBackend(barcode) {
 
 
 
-    // ✅ Se a área de email está visível, o admin clicou ENTRAR para finalizar o cadastro
+    //  Se a área de email está visível, o admin clicou ENTRAR para finalizar o cadastro
 
     if (isAdmin && emailArea && emailArea.style.display !== 'none') {
 
@@ -731,7 +731,7 @@ async function loginBackend(barcode) {
 
             if (res.ok) {
 
-                alert('✅ Admin cadastrado com sucesso! Faça o login agora.');
+                alert(' Admin cadastrado com sucesso! Faça o login agora.');
 
                 emailArea.style.display = 'none';
 
@@ -741,13 +741,13 @@ async function loginBackend(barcode) {
 
                 const erro = await res.text();
 
-                alert('❌ Erro ao cadastrar: ' + erro);
+                alert(' Erro ao cadastrar: ' + erro);
 
             }
 
         } catch (err) {
 
-            alert('❌ Erro de conexão com o servidor.');
+            alert(' Erro de conexão com o servidor.');
 
         }
 
@@ -780,7 +780,7 @@ async function loginBackend(barcode) {
 
             usuarioLogado = { nome: data.nome, tipo: data.tipo, barcode: cracha };
 
-            // 🌟 ADICIONE ESTAS DUAS LINHAS AQUI PARA SALVAR OS DADOS DO OPERADOR:
+            //  ADICIONE ESTAS DUAS LINHAS AQUI PARA SALVAR OS DADOS DO OPERADOR:
             localStorage.setItem("usuarioId", cracha.toUpperCase());
             localStorage.setItem("setorUsuario", data.tipo.toUpperCase());
 
@@ -797,7 +797,7 @@ async function loginBackend(barcode) {
 
 
 
-            // ✅ Se for admin não cadastrado, mostra campo de email inline
+            //  Se for admin não cadastrado, mostra campo de email inline
 
             if (isAdmin && (texto.includes('não cadastrado') || response.status === 404)) {
 
@@ -942,14 +942,14 @@ async function esqueciSenha() {
         try { data = JSON.parse(texto); } catch {}
 
         if (response.ok && !data.semEmail) {
-            alert(`✅ ${data.mensagem}`);
+            alert(` ${data.mensagem}`);
             mostrarTelaCodigoReset(barcode);
         } else {
             const mensagemErro = data?.mensagem || data?.detail || data?.title || texto;
-            alert('❌ ' + mensagemErro);
+            alert(' ' + mensagemErro);
         }
     } catch (error) {
-        alert('❌ Erro de conexão com o servidor.');
+        alert(' Erro de conexão com o servidor.');
     }
 }
     async function carregarAtivos() {
@@ -1067,15 +1067,15 @@ async function salvarNovaSenha() {
 
         if (res.ok) {
             feedback.style.color = '#28a745';
-            feedback.innerText = '✅ ' + mensagem;
+            feedback.innerText = ' ' + mensagem;
             setTimeout(() => mostrarLogin(), 2000);
         } else {
             feedback.style.color = 'red';
-            feedback.innerText = '❌ ' + mensagem;
+            feedback.innerText = ' ' + mensagem;
         }
     } catch (err) {
         feedback.style.color = 'red';
-        feedback.innerText = '❌ Erro de conexão com o servidor.';
+        feedback.innerText = ' Erro de conexão com o servidor.';
     }
 }
 
@@ -1114,7 +1114,7 @@ async function realizarMovimentacao(tipo, ferramentaId) {
     }
 
     if (!ferramentaEncontrada) {
-        feedback.innerText = "❌ Ferramenta não encontrada. Verifique o código de barras.";
+        feedback.innerText = " Ferramenta não encontrada. Verifique o código de barras.";
         feedback.style.color = "red";
         return;
     }
@@ -1125,17 +1125,17 @@ async function realizarMovimentacao(tipo, ferramentaId) {
         const status = String(ferramentaEncontrada.status || ferramentaEncontrada.Status || '').trim().toUpperCase();
 
         if (setor === 'ALMOXERIFADO' || setor === 'GERAL' || setor === '') {
-            feedback.innerText = "❌ Esta ferramenta está no almoxarifado. Solicite ao administrador para movê-la.";
+            feedback.innerText = " Esta ferramenta está no almoxarifado. Solicite ao administrador para movê-la.";
             feedback.style.color = "orange";
             return;
         }
         if (status === 'EM_USO') {
-            feedback.innerText = "❌ Esta ferramenta já está em uso por outro colaborador.";
+            feedback.innerText = " Esta ferramenta já está em uso por outro colaborador.";
             feedback.style.color = "red";
             return;
         }
         if (status === 'MANUTENCAO') {
-            feedback.innerText = "❌ Esta ferramenta está em manutenção e não pode ser retirada.";
+            feedback.innerText = " Esta ferramenta está em manutenção e não pode ser retirada.";
             feedback.style.color = "red";
             return;
         }
@@ -1166,14 +1166,14 @@ async function realizarMovimentacao(tipo, ferramentaId) {
         } catch (err) { /* texto simples, ok */ }
 
         if (response.ok) {
-            feedback.innerText = "✅ SUCESSO: " + textoResposta;
+            feedback.innerText = " SUCESSO: " + textoResposta;
             feedback.style.color = "var(--green)";
         } else {
-            feedback.innerText = "❌ ERRO: " + textoResposta;
+            feedback.innerText = " ERRO: " + textoResposta;
             feedback.style.color = "red";
         }
     } catch (e) {
-        feedback.innerText = "❌ ERRO DE CONEXÃO";
+        feedback.innerText = " ERRO DE CONEXÃO";
         feedback.style.color = "red";
     }
 }
@@ -1224,12 +1224,12 @@ function renderizarTabelaOficina(lista) {
                 </td>
                 <td>
                     <span style="color: ${(f.status || f.Status) === 'EM_USO' ? '#ffaa00' : '#00ff00'}">
-                        ● ${f.status || f.Status}
+                         ${f.status || f.Status}
                     </span>
                 </td>
                 <td style="text-align: center;">
                     <button onclick="abrirModalEdicao('${f.id || f.Id}')" style="background: none; border: 1px solid #333; color: #666; padding: 8px; border-radius: 6px; cursor: pointer;">
-                        ✏️ Editar
+                         Editar
                     </button>
                 </td>
             </tr>
@@ -1270,7 +1270,7 @@ function mostrarOverlayAguardandoBotao() {
         color: white; font-family: 'Segoe UI', sans-serif;
     `;
     overlay.innerHTML = `
-        <div style="font-size: 60px; margin-bottom: 20px;">🚨</div>
+        <div style="font-size: 60px; margin-bottom: 20px;"></div>
         <h2 style="color: #ff0000; font-size: 1.6rem; margin-bottom: 10px;">ALERTA ACIONADO</h2>
         <p style="color: #ccc; text-align: center; max-width: 380px; line-height: 1.6;">
             Pressione o <strong style="color:white">botão físico</strong> no painel do Arduino
@@ -1297,7 +1297,7 @@ function removerOverlayAguardandoBotao() {
 }
 
 async function fazerLogout(motivo = "VOLUNTARIO") {
-    // 🌟 NOVA LÓGICA: Notifica o backend para tocar o buzzer antes de limpar a tela do front
+    //  NOVA LÓGICA: Notifica o backend para tocar o buzzer antes de limpar a tela do front
     try {
         await fetch(`${API_URL}/logout`, {
             method: 'POST',
@@ -1365,7 +1365,7 @@ function mostrarTelaCadastro() {
                     <input type="email" id="cadEmail" class="input-scan" placeholder="EMAIL (apenas ADMIN)" style="margin-top:10px; font-size:1rem; width: 100%; box-sizing: border-box;">
                     <div style="position:relative; width:100%; margin-top:10px;">
                         <input type="password" id="cadSenha" class="input-scan" placeholder="SENHA (APENAS ADMIN)" style="font-size:1rem; width: 100%; box-sizing: border-box; padding-right:56px;">
-                        <button type="button" onclick="toggleCadSenhaFn()" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); border:none; background:transparent; cursor:pointer; padding:8px; font-size:18px; color:#aaa; z-index:10; line-height:1;" title="Mostrar/ocultar senha">👁</button>
+                        <button type="button" onclick="toggleCadSenhaFn()" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); border:none; background:transparent; cursor:pointer; padding:8px; font-size:18px; color:#aaa; z-index:10; line-height:1;" title="Mostrar/ocultar senha"></button>
                     </div>
                     <small style="color:#777; display:block; margin-top:8px; text-align: center;">Digite o código terminado em A para criar um ADMIN; caso contrário, o usuário será OPERADOR.</small>
                 </div>
@@ -1497,22 +1497,22 @@ async function mostrarAdmin(filtroSetor = 'GERAL') {
                 <div>
                     <h2 style="color: white; margin-bottom: 30px;">TSEA <span style="color: red;">ENERGIA</span></h2>
                     <nav>
-                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()">📊 DASHBOARD</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()">🛠️ OFICINA</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXARIFADO</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarInventario()">📋 INVENTÁRIO</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()">📈 RELATÓRIOS</div>
+                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()"> DASHBOARD</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()"> OFICINA</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()"> ALMOXARIFADO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarInventario()"> INVENTÁRIO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()"> RELATÓRIOS</div>
                     </nav>
                     <div style="border-top: 1px solid #333; margin-top: 20px; padding-top: 15px;">
                         <button onclick="limparColaboradoresInvalidos()" style="width: 100%; background: #333; color: #aaa; border: 1px solid #555; padding: 10px; cursor: pointer; border-radius: 5px; font-size: 12px; margin-bottom: 10px;">
-                            🧹 Limpar Colaboradores
+                             Limpar Colaboradores
                         </button>
                     </div>
                 </div>
 
                 <div style="border-top: 1px solid #222; padding-top: 20px;">
                     <div style="color: #aaa; font-size: 14px; margin-bottom: 10px;">
-                        👤 ${usuarioLogado ? usuarioLogado.nome : "Administrador"} 
+                         ${usuarioLogado ? usuarioLogado.nome : "Administrador"} 
                     </div>
                     <button onclick="fazerLogout()" style="width: 100%; background: #c00; color: white; border: none; padding: 12px; cursor: pointer; border-radius: 5px; font-weight: bold;">
                         SAIR DA CONTA
@@ -1524,7 +1524,7 @@ async function mostrarAdmin(filtroSetor = 'GERAL') {
                            class="search-input" style="width: 450px; background:#111; border:1px solid #333; color:white; padding:12px; border-radius:8px;">
                     
                     <button id="bellButton" class="bell-btn" onclick="abrirNotificacaoAtraso()" title="Notificações" style="position:relative; font-size:22px;">
-                        🔔${temAtraso ? '<span class="alert-dot" style="position:absolute;top:2px;right:2px;width:10px;height:10px;background:red;border-radius:50%;box-shadow:0 0 6px red;"></span>' : ''}
+                        &#128276;${temAtraso ? '<span class="alert-dot" style="position:absolute;top:2px;right:2px;width:10px;height:10px;background:red;border-radius:50%;box-shadow:0 0 6px red;"></span>' : ''}
                     </button>
                 </div>
 
@@ -1589,29 +1589,29 @@ async function mostrarOficina() {
                 <div>
                     <h2 style="color: white; margin-bottom: 30px;">TSEA <span style="color: red;">ENERGIA</span></h2>
                     <nav>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()">📊 DASHBOARD</div>
-                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()">🛠️ OFICINA</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXARIFADO</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarInventario()">📋 INVENTÁRIO</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()">📈 RELATÓRIOS</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()"> DASHBOARD</div>
+                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()"> OFICINA</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()"> ALMOXARIFADO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarInventario()"> INVENTÁRIO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()"> RELATÓRIOS</div>
                     </nav>
                 </div>
                 <div style="border-top: 1px solid #222; padding-top: 20px;">
-                    <div style="color: #aaa; font-size: 14px; margin-bottom: 10px;">👤 ${usuarioLogado ? usuarioLogado.nome : "Administrador"}</div>
+                    <div style="color: #aaa; font-size: 14px; margin-bottom: 10px;"> ${usuarioLogado ? usuarioLogado.nome : "Administrador"}</div>
                     <button onclick="fazerLogout()" style="width: 100%; background: #222; color: white; border: 1px solid #444; padding: 10px; cursor: pointer; border-radius: 5px;">SAIR</button>
                 </div>
             </div>
 
             <div style="flex: 1; padding: 30px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
-                    <h1 style="color: white; margin: 0;">🛠️ Gestão de Oficina</h1>
+                    <h1 style="color: white; margin: 0;"> Gestão de Oficina</h1>
                     <button onclick="abrirModalNovaFerramenta()" style="background: #e60000; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">
-                     ➕ Nova Ferramenta
+                      Nova Ferramenta
                    </button>
                 </div>
 
                 <div style="background: #111; padding: 15px; border-radius: 12px; border: 1px solid #e60000; margin-bottom: 20px; display: flex; align-items: center; gap: 15px;">
-                    <span style="font-size: 20px;">🏷️</span>
+                    <span style="font-size: 20px;"></span>
                     <input type="text" id="buscaCodigoBarras" name="buscaCodigoBarras"
                            placeholder="Bipe o Código de Barras aqui..." 
                            style="flex: 1; background: transparent; border: none; color: white; font-size: 18px; outline: none; font-family: monospace;"
@@ -1650,7 +1650,7 @@ function abrirModalNovaFerramenta() {
     const modalHtml = `
         <div id="modalCadastro" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 1000;">
             <div style="background: #111; padding: 30px; border-radius: 12px; border: 1px solid #333; width: 400px; color: white;">
-                <h2 style="margin-top: 0; color: #e60000;">➕ Cadastrar Ativo</h2>
+                <h2 style="margin-top: 0; color: #e60000;"> Cadastrar Ativo</h2>
                 
                 <div style="margin-top: 20px;">
                     <label style="display:block; margin-bottom: 5px; color: #aaa;">Código de Barras</label>
@@ -1700,7 +1700,7 @@ async function salvarFerramenta() {
     const setor = document.getElementById('novoSetor').value;
 
     if (!cod || !desc) {
-        alert("⚠️ Preencha todos os campos!");
+        alert(" Preencha todos os campos!");
         return;
     }
 
@@ -1720,15 +1720,15 @@ async function salvarFerramenta() {
         });
 
         if (res.ok) {
-            alert("✅ Cadastrada com sucesso!");
+            alert(" Cadastrada com sucesso!");
             document.getElementById('modalCadastro').remove();
             mostrarOficina();
         } else {
             const erro = await res.json();
-            alert("❌ Erro: " + (erro.erro || "Falha ao salvar"));
+            alert(" Erro: " + (erro.erro || "Falha ao salvar"));
         }
     } catch (err) {
-        alert("❌ Erro de conexão com o servidor.");
+        alert(" Erro de conexão com o servidor.");
     }
 }
 
@@ -1753,7 +1753,7 @@ function abrirModalEdicao(id) {
     const modalHtml = `
         <div id="modalCadastro" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; justify-content: center; align-items: center; z-index: 1000;">
             <div style="background: #111; padding: 30px; border-radius: 12px; border: 1px solid #333; width: 420px; color: white;">
-                <h2 style="margin-top: 0; color: #e60000;">✏️ Editar Ferramenta</h2>
+                <h2 style="margin-top: 0; color: #e60000;"> Editar Ferramenta</h2>
 
                 <label style="display:block; margin-bottom: 5px; color: #aaa;">Código de Barras</label>
                 <input type="text" id="editCodigo" value="${codigoBarras}" style="width: 100%; padding: 12px; margin-bottom: 18px; background: #000; border: 1px solid #444; color: white; border-radius: 5px;" readonly>
@@ -1775,8 +1775,8 @@ function abrirModalEdicao(id) {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
                     <button onclick="atualizarFerramenta('${id}')" style="background: #e60000; color: white; border: none; padding: 15px; border-radius: 5px; font-weight: bold; cursor: pointer;">SALVAR</button>
                     ${status === 'MANUTENCAO'
-                        ? `<button onclick="tirarDaManutencao('${id}')" style="background: #00aa44; color: white; border: none; padding: 15px; border-radius: 5px; font-weight: bold; cursor: pointer;">✅ TIRAR DA MANUTENÇÃO</button>`
-                        : `<button onclick="colocarEmManutencao('${id}')" style="background: #ff9900; color: black; border: none; padding: 15px; border-radius: 5px; font-weight: bold; cursor: pointer;">🔧 MANUTENÇÃO</button>`
+                        ? `<button onclick="tirarDaManutencao('${id}')" style="background: #00aa44; color: white; border: none; padding: 15px; border-radius: 5px; font-weight: bold; cursor: pointer;"> TIRAR DA MANUTENÇÃO</button>`
+                        : `<button onclick="colocarEmManutencao('${id}')" style="background: #ff9900; color: black; border: none; padding: 15px; border-radius: 5px; font-weight: bold; cursor: pointer;"> MANUTENÇÃO</button>`
                     }
                 </div>
                 <div style="display: flex; gap: 10px;">
@@ -1807,15 +1807,15 @@ async function atualizarFerramenta(id) {
         });
 
         if (res.ok) {
-            alert('✅ Alterações salvas com sucesso!');
+            alert(' Alterações salvas com sucesso!');
             document.getElementById('modalCadastro').remove();
             mostrarOficina();
         } else {
             const erro = await res.text();
-            alert('❌ Erro ao atualizar: ' + erro);
+            alert(' Erro ao atualizar: ' + erro);
         }
     } catch (err) {
-        alert('❌ Erro de conexão com o servidor.');
+        alert(' Erro de conexão com o servidor.');
     }
 }
 
@@ -1828,15 +1828,15 @@ async function excluirFerramenta(id) {
         });
 
         if (res.ok) {
-            alert('🗑️ Ferramenta excluída com sucesso!');
+            alert(' Ferramenta excluída com sucesso!');
             document.getElementById('modalCadastro').remove();
             mostrarOficina();
         } else {
             const erro = await res.text();
-            alert('❌ Erro ao excluir: ' + erro);
+            alert(' Erro ao excluir: ' + erro);
         }
     } catch (err) {
-        alert('❌ Erro de conexão com o servidor.');
+        alert(' Erro de conexão com o servidor.');
     }
 }
 
@@ -1849,15 +1849,15 @@ async function colocarEmManutencao(id) {
         });
 
         if (res.ok) {
-            alert('🔧 Ferramenta marcada como manutenção.');
+            alert(' Ferramenta marcada como manutenção.');
             document.getElementById('modalCadastro').remove();
             mostrarOficina();
         } else {
             const erro = await res.text();
-            alert('❌ Erro ao atualizar para manutenção: ' + erro);
+            alert(' Erro ao atualizar para manutenção: ' + erro);
         }
     } catch (err) {
-        alert('❌ Erro de conexão com o servidor.');
+        alert(' Erro de conexão com o servidor.');
     }
 }
 
@@ -1872,15 +1872,15 @@ async function tirarDaManutencao(id) {
         });
 
         if (res.ok) {
-            alert('✅ Ferramenta disponível novamente!');
+            alert(' Ferramenta disponível novamente!');
             document.getElementById('modalCadastro').remove();
             mostrarOficina();
         } else {
             const erro = await res.text();
-            alert('❌ Erro ao atualizar: ' + erro);
+            alert(' Erro ao atualizar: ' + erro);
         }
     } catch (err) {
-        alert('❌ Erro de conexão com o servidor.');
+        alert(' Erro de conexão com o servidor.');
     }
 }
 
@@ -1904,13 +1904,13 @@ async function buscarNaOficina(id) {
                 <p><strong>Setor:</strong> ${getSetorLabel(ferramenta)}</p>
                 <p><strong>Status:</strong> ${ferramenta.status || ferramenta.Status}</p>
                 <div style="margin-top: 20px; display: flex; gap: 10px;">
-                    <button style="background: #333; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer;">✏️ Editar</button>
-                    <button style="background: #500; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer;">🔧 Enviar p/ Manutenção</button>
+                    <button style="background: #333; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer;"> Editar</button>
+                    <button style="background: #500; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer;"> Enviar p/ Manutenção</button>
                 </div>
             </div>
         `;
     } else {
-        areaResultado.innerHTML = `<p style="color: #ff4444;">❌ Ferramenta "${id}" não encontrada no sistema.</p>`;
+        areaResultado.innerHTML = `<p style="color: #ff4444;"> Ferramenta "${id}" não encontrada no sistema.</p>`;
     }
 }
 
@@ -1937,11 +1937,11 @@ async function cadastrarFerramenta() {
         });
 
         if (response.ok) {
-            alert("✅ Ferramenta cadastrada com sucesso!");
+            alert(" Ferramenta cadastrada com sucesso!");
             document.getElementById('inputCadastro').value = ""; // Limpa o campo
             mostrarOficina(); // RECARREGA OS CARDS NA TELA
         } else {
-            alert("❌ Erro ao cadastrar no banco.");
+            alert(" Erro ao cadastrar no banco.");
         }
     } catch (error) {
         console.error("Erro:", error);
@@ -1977,7 +1977,7 @@ function renderizarLinhas(lista) {
     `).join('');
 }
 
-// ✅ NOVO: Função para renderizar a tabela do Almoxerifado
+//  NOVO: Função para renderizar a tabela do Almoxerifado
 function renderizarTabelaAlmoxerifado(lista) {
     const corpo = document.getElementById('tabelaAlmoxerifadoCorpo');
     if (!corpo) return;
@@ -2048,17 +2048,19 @@ async function mostrarAlmoxerifado() {
                 <div>
                     <h2 style="color: white; margin-bottom: 30px;">TSEA <span style="color: red;">ENERGIA</span></h2>
                     <nav>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()">📊 DASHBOARD</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()">🛠️ OFICINA</div>
-                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXARIFADO</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarInventario()">📋 INVENTÁRIO</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()">📈 RELATÓRIOS</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()"> DASHBOARD</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()"> OFICINA</div>
+                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()"> ALMOXARIFADO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarInventario()"> INVENTÁRIO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()"> RELATÓRIOS</div>
                     </nav>
+                </div>
+            </div>
 
             <div style="flex: 1; padding: 30px; overflow-y: auto;">
                 <div style="margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 260px;">
-                        <h1 style="color: white; margin: 0 0 10px 0;">📦 Almoxarifado</h1>
+                        <h1 style="color: white; margin: 0 0 10px 0;"> Almoxarifado</h1>
                         <p style="color: #888; margin: 0 0 20px 0;">Ferramentas guardadas no almoxarifado</p>
                     </div>
                 </div>
@@ -2111,12 +2113,12 @@ async function mostrarAlmoxerifado() {
     }
 }
 
-// ✅ NOVO: Modal para retirar ferramenta do almoxerifado
+//  NOVO: Modal para retirar ferramenta do almoxerifado
 function abrirModalRetiradaAlmoxerifado(ferramentaId, codigo, descricao) {
     document.body.insertAdjacentHTML('beforeend', `
         <div id="modalRetirada" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 2000;">
             <div style="background: #111; padding: 30px; border-radius: 12px; border: 2px solid #e60000; width: 400px; color: white;">
-                <h2 style="margin-top: 0; color: #e60000; text-align: center;">📦 Retirar do Almoxarifado</h2>
+                <h2 style="margin-top: 0; color: #e60000; text-align: center;"> Retirar do Almoxarifado</h2>
                 
                 <div style="background: #000; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #333;">
                     <p style="margin: 5px 0; color: #aaa; font-size: 12px;">Código</p>
@@ -2163,7 +2165,7 @@ async function confirmarRetiradaAlmoxerifado(ferramentaId) {
     const setorDestino = document.getElementById('setorDestino').value;
 
     if (!setorDestino) {
-        alert('⚠️ Selecione um setor antes de confirmar!');
+        alert(' Selecione um setor antes de confirmar!');
         return;
     }
 
@@ -2177,16 +2179,16 @@ async function confirmarRetiradaAlmoxerifado(ferramentaId) {
         });
 
         if (response.ok) {
-            alert(`✅ Ferramenta movida para ${setorDestino} com sucesso!`);
+            alert(` Ferramenta movida para ${setorDestino} com sucesso!`);
             fecharModalRetirada();
             mostrarAlmoxerifado(); // Atualiza a lista
         } else {
             const erro = await response.text();
-            alert(`❌ Erro: ${erro}`);
+            alert(` Erro: ${erro}`);
         }
     } catch (error) {
         console.error('Erro:', error);
-        alert('❌ Erro de conexão com o servidor');
+        alert(' Erro de conexão com o servidor');
     }
 }
 
@@ -2239,14 +2241,14 @@ function mostrarLogin() {
                                placeholder="SENHA (Apenas ADMIN)"
                                style="width:100%; box-sizing:border-box; padding-right:56px; text-align:center; letter-spacing:3px;"
                                autocomplete="current-password">
-                        <button type="button" onclick="toggleSenha()" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); border:none; background:transparent; cursor:pointer; padding:8px; font-size:18px; color:#aaa; z-index:10; line-height:1;" title="Mostrar/ocultar senha">👁</button>
+                        <button type="button" onclick="toggleSenha()" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); border:none; background:transparent; cursor:pointer; padding:8px; font-size:18px; color:#aaa; z-index:10; line-height:1;" title="Mostrar/ocultar senha"></button>
                     </div>
                 </div>
 
-                <!-- ✅ NOVO: campo de email, aparece só quando admin não está cadastrado -->
+                <!--  NOVO: campo de email, aparece só quando admin não está cadastrado -->
                 <div id="emailCadastroArea" style="display:none; margin-top:10px;">
                     <small style="color:#ffcc00; display:block; margin-bottom:6px;">
-                        ⚠️ Admin não encontrado. Informe seu email para cadastrar:
+                         Admin não encontrado. Informe seu email para cadastrar:
                     </small>
                     <input type="email" id="emailCadastro" class="input-scan"
                            placeholder="SEU EMAIL"
@@ -2341,7 +2343,7 @@ function mostrarLogin() {
                 </div>
                 <div style="display:flex; align-items:center; gap:10px;">
                     <button id="bellButton" class="bell-btn" onclick="abrirNotificacaoAtrasoOperador()" title="Notificações" style="position:relative; font-size:22px;">
-                        🔔
+                        &#128276;
                     </button>
                     <button class="btn-logout" onclick="mostrarLogin()">SAIR</button>
                 </div>
@@ -2407,7 +2409,7 @@ function mostrarLogin() {
         e.target.value = "";
 
         if (valorDigitado === "") {
-            document.getElementById('feedback').innerText = "⚠️ Bipe ou digite o código de barras da ferramenta!";
+            document.getElementById('feedback').innerText = " Bipe ou digite o código de barras da ferramenta!";
             document.getElementById('feedback').style.color = "orange";
             return;
         }
@@ -2482,10 +2484,10 @@ async function mostrarInventario() {
     });
 
     const coresSetor = {
-        USINAGEM:     { borda: '#ff9900', icone: '⚙️' },
-        MONTAGEM:     { borda: '#0056b3', icone: '🔩' },
-        SOLDAGEM:     { borda: '#ffcc00', icone: '🔥' },
-        ALMOXARIFADO: { borda: '#28a745', icone: '📦' }
+        USINAGEM:     { borda: '#ff9900', icone: '' },
+        MONTAGEM:     { borda: '#0056b3', icone: '' },
+        SOLDAGEM:     { borda: '#ffcc00', icone: '' },
+        ALMOXARIFADO: { borda: '#28a745', icone: '' }
     };
 
     document.getElementById('app').innerHTML = `
@@ -2496,15 +2498,15 @@ async function mostrarInventario() {
                 <div>
                     <h2 style="color:white; margin-bottom:30px;">TSEA <span style="color:red;">ENERGIA</span></h2>
                     <nav>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()">📊 DASHBOARD</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()">🛠️ OFICINA</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()">📦 ALMOXARIFADO</div>
-                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white; background:#111;" onclick="mostrarInventario()">📋 INVENTÁRIO</div>
-                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()">📈 RELATÓRIOS</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()"> DASHBOARD</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()"> OFICINA</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()"> ALMOXARIFADO</div>
+                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white; background:#111;" onclick="mostrarInventario()"> INVENTÁRIO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()"> RELATÓRIOS</div>
                     </nav>
                 </div>
                 <div style="border-top:1px solid #222; padding-top:20px;">
-                    <div style="color:#aaa; font-size:14px; margin-bottom:10px;">👤 ${usuarioLogado ? usuarioLogado.nome : 'Administrador'}</div>
+                    <div style="color:#aaa; font-size:14px; margin-bottom:10px;"> ${usuarioLogado ? usuarioLogado.nome : 'Administrador'}</div>
                     <button onclick="fazerLogout()" style="width:100%; background:#c00; color:white; border:none; padding:12px; cursor:pointer; border-radius:5px; font-weight:bold;">SAIR DA CONTA</button>
                 </div>
             </div>
@@ -2513,12 +2515,12 @@ async function mostrarInventario() {
             <div style="flex:1; padding:30px; overflow-y:auto;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px;">
                     <div>
-                        <h1 style="color:white; margin:0 0 5px 0;">📋 Inventário de Armários</h1>
+                        <h1 style="color:white; margin:0 0 5px 0;"> Inventário de Armários</h1>
                         <p style="color:#666; margin:0; font-size:14px;">Visualize e imprima a lista de ferramentas por setor</p>
                     </div>
                     <button onclick="imprimirInventarioTodos()"
                             style="background:#e60000; color:white; border:none; padding:12px 22px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">
-                        🖨️ IMPRIMIR TODOS
+                         IMPRIMIR TODOS
                     </button>
                 </div>
 
@@ -2532,9 +2534,9 @@ async function mostrarInventario() {
                             <div style="color:${coresSetor[r.setor].borda}; font-size:26px; font-weight:bold;">${r.total}</div>
                             <div style="color:#666; font-size:11px; margin-top:4px;">ferramentas</div>
                             <div style="display:flex; justify-content:center; gap:12px; margin-top:10px; font-size:11px;">
-                                <span style="color:#00ff00;">● ${r.disponiveis} disp.</span>
-                                <span style="color:#ffaa00;">● ${r.emUso} uso</span>
-                                ${r.manutencao > 0 ? `<span style="color:#ff4444;">● ${r.manutencao} man.</span>` : ''}
+                                <span style="color:#00ff00;"> ${r.disponiveis} disp.</span>
+                                <span style="color:#ffaa00;"> ${r.emUso} uso</span>
+                                ${r.manutencao > 0 ? `<span style="color:#ff4444;"> ${r.manutencao} man.</span>` : ''}
                             </div>
                         </div>
                     `).join('')}
@@ -2557,7 +2559,7 @@ async function mostrarInventario() {
                             </div>
                             <button onclick="abrirInventarioSetor('${setor}')"
                                     style="background:${cor}; color:#000; border:none; padding:8px 18px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px;">
-                                🖨️ IMPRIMIR
+                                 IMPRIMIR
                             </button>
                         </div>
                         <table style="width:100%; border-collapse:collapse; color:white;">
@@ -2583,7 +2585,7 @@ async function mostrarInventario() {
                                             <td style="padding:12px 15px; color:#444; font-size:12px;">${idx + 1}</td>
                                             <td style="padding:12px 15px; color:#e60000; font-family:monospace; font-weight:bold; font-size:13px;">${cod}</td>
                                             <td style="padding:12px 15px; color:#ddd;">${desc}</td>
-                                            <td style="padding:12px 15px;"><span style="color:${stCor}; font-size:12px; font-weight:bold;">● ${st}</span></td>
+                                            <td style="padding:12px 15px;"><span style="color:${stCor}; font-size:12px; font-weight:bold;"> ${st}</span></td>
                                             <td style="padding:12px 15px;">
                                                 <div style="display:flex; align-items:center; gap:8px;">
                                                     <div style="width:70px; height:5px; background:#222; border-radius:3px; overflow:hidden;">
@@ -2610,10 +2612,10 @@ function abrirInventarioSetor(setor) {
         .then(r => r.json())
         .then(todas => {
             const coresSetor = {
-                USINAGEM:     { cor: '#ff9900', icone: '⚙️' },
-                MONTAGEM:     { cor: '#0056b3', icone: '🔩' },
-                SOLDAGEM:     { cor: '#ffcc00', icone: '🔥' },
-                ALMOXARIFADO: { cor: '#28a745', icone: '📦' }
+                USINAGEM:     { cor: '#ff9900', icone: '' },
+                MONTAGEM:     { cor: '#0056b3', icone: '' },
+                SOLDAGEM:     { cor: '#ffcc00', icone: '' },
+                ALMOXARIFADO: { cor: '#28a745', icone: '' }
             };
 
             const lista = todas.filter(f => {
@@ -2639,7 +2641,7 @@ function abrirInventarioSetor(setor) {
                     <td>${desc}</td>
                     <td>${st}</td>
                     <td>${vida}%</td>
-                    <td style="text-align:center;">☐</td>
+                    <td style="text-align:center;"></td>
                 </tr>`;
             }).join('');
 
@@ -2664,10 +2666,10 @@ function abrirInventarioSetor(setor) {
             </style></head><body>
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <div>
-                    <h1>📋 Inventário do Armário – ${setor}</h1>
+                    <h1> Inventário do Armário – ${setor}</h1>
                     <div class="sub">Gerado em: ${now} &nbsp;|&nbsp; Total: ${lista.length} ferramentas</div>
                 </div>
-                <button onclick="window.print()" style="background:${cor}; color:white; border:none; padding:12px 24px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">🖨️ IMPRIMIR</button>
+                <button onclick="window.print()" style="background:${cor}; color:white; border:none; padding:12px 24px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;"> IMPRIMIR</button>
             </div>
             <div class="resumo">
                 <div><b style="color:#28a745;">${disponiveis}</b>Disponíveis</div>
@@ -2677,7 +2679,7 @@ function abrirInventarioSetor(setor) {
             </div>
             <table>
                 <thead><tr>
-                    <th>#</th><th>Código</th><th>Descrição</th><th>Status</th><th>Vida Útil</th><th style="text-align:center;">✔ Conf.</th>
+                    <th>#</th><th>Código</th><th>Descrição</th><th>Status</th><th>Vida Útil</th><th style="text-align:center;"> Conf.</th>
                 </tr></thead>
                 <tbody>${linhas || '<tr><td colspan="6" style="text-align:center;padding:20px;color:#aaa;">Nenhuma ferramenta neste setor.</td></tr>'}</tbody>
             </table>
@@ -2691,7 +2693,7 @@ function abrirInventarioSetor(setor) {
             janela.document.write(html);
             janela.document.close();
         })
-        .catch(() => alert('❌ Erro ao carregar ferramentas para impressão.'));
+        .catch(() => alert(' Erro ao carregar ferramentas para impressão.'));
 }
 
 function imprimirInventarioTodos() {
@@ -2700,10 +2702,10 @@ function imprimirInventarioTodos() {
         .then(todas => {
             const setores = ['USINAGEM', 'MONTAGEM', 'SOLDAGEM', 'ALMOXARIFADO'];
             const coresSetor = {
-                USINAGEM:     { cor: '#ff9900', icone: '⚙️' },
-                MONTAGEM:     { cor: '#0056b3', icone: '🔩' },
-                SOLDAGEM:     { cor: '#cc9900', icone: '🔥' },
-                ALMOXARIFADO: { cor: '#28a745', icone: '📦' }
+                USINAGEM:     { cor: '#ff9900', icone: '' },
+                MONTAGEM:     { cor: '#0056b3', icone: '' },
+                SOLDAGEM:     { cor: '#cc9900', icone: '' },
+                ALMOXARIFADO: { cor: '#28a745', icone: '' }
             };
             const now = new Date().toLocaleString('pt-BR');
 
@@ -2720,7 +2722,7 @@ function imprimirInventarioTodos() {
                     const desc = f.descricao || f.Descricao || '—';
                     const st   = (f.status || f.Status || 'DISPONIVEL').toUpperCase();
                     const vida = f.vidaUtil !== undefined ? f.vidaUtil : (f.VidaUtil || 0);
-                    return `<tr><td>${idx+1}</td><td><b>${cod}</b></td><td>${desc}</td><td>${st}</td><td>${vida}%</td><td style="text-align:center;">☐</td></tr>`;
+                    return `<tr><td>${idx+1}</td><td><b>${cod}</b></td><td>${desc}</td><td>${st}</td><td>${vida}%</td><td style="text-align:center;"></td></tr>`;
                 }).join('');
                 return `
                 <div class="setor-bloco" style="page-break-after: always;">
@@ -2728,7 +2730,7 @@ function imprimirInventarioTodos() {
                     <p style="color:#666; font-size:12px; margin:0 0 12px 0;">Total: ${lista.length} ferramenta${lista.length!==1?'s':''}</p>
                     <table>
                         <thead><tr style="background:${cor};">
-                            <th>#</th><th>Código</th><th>Descrição</th><th>Status</th><th>Vida Útil</th><th style="text-align:center;">✔</th>
+                            <th>#</th><th>Código</th><th>Descrição</th><th>Status</th><th>Vida Útil</th><th style="text-align:center;"></th>
                         </tr></thead>
                         <tbody>${linhas || '<tr><td colspan="6" style="color:#aaa;padding:15px;text-align:center;">Nenhuma ferramenta neste setor.</td></tr>'}</tbody>
                     </table>
@@ -2757,10 +2759,10 @@ function imprimirInventarioTodos() {
             </style></head><body>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:25px; border-bottom:3px solid #e60000; padding-bottom:15px;">
                 <div>
-                    <h1>📋 Inventário Geral de Armários – TSEA Energia</h1>
+                    <h1> Inventário Geral de Armários – TSEA Energia</h1>
                     <p style="color:#888; margin:4px 0 0 0; font-size:13px;">Gerado em: ${now} &nbsp;|&nbsp; Total geral: ${todas.length} ferramentas</p>
                 </div>
-                <button onclick="window.print()" style="background:#e60000; color:white; border:none; padding:12px 24px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">🖨️ IMPRIMIR</button>
+                <button onclick="window.print()" style="background:#e60000; color:white; border:none; padding:12px 24px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;"> IMPRIMIR</button>
             </div>
             ${blocos}
             </body></html>`;
@@ -2769,7 +2771,7 @@ function imprimirInventarioTodos() {
             janela.document.write(html);
             janela.document.close();
         })
-        .catch(() => alert('❌ Erro ao carregar ferramentas para impressão.'));
+        .catch(() => alert(' Erro ao carregar ferramentas para impressão.'));
 }
 
 // ===================== FIM INVENTÁRIO =====================
@@ -2786,14 +2788,14 @@ function abrirModalRelatorio() {
     modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);z-index:3000;display:flex;justify-content:center;align-items:center;';
     modal.innerHTML = `
         <div style="background:#111;border:1px solid #333;border-radius:14px;padding:36px;width:480px;color:white;position:relative;">
-            <h2 style="margin:0 0 6px 0;color:white;">📈 Gerar <span style="color:#e60000;">Relatório</span></h2>
+            <h2 style="margin:0 0 6px 0;color:white;"> Gerar <span style="color:#e60000;">Relatório</span></h2>
             <p style="color:#666;font-size:13px;margin:0 0 28px 0;">Exporta movimentações, logs de acesso e ferramentas atrasadas para XLSX.</p>
 
             <label style="display:block;color:#aaa;font-size:12px;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">Período</label>
             <div style="display:flex;gap:10px;margin-bottom:24px;">
-                <button id="rDiario" onclick="selecionarPeriodo('DIARIO')" style="flex:1;padding:12px;border-radius:8px;border:2px solid #e60000;background:#1a0000;color:white;cursor:pointer;font-weight:bold;">📅 Diário</button>
-                <button id="rMensal" onclick="selecionarPeriodo('MENSAL')" style="flex:1;padding:12px;border-radius:8px;border:1px solid #333;background:#0a0a0a;color:#888;cursor:pointer;">📆 Mensal</button>
-                <button id="rAnual"  onclick="selecionarPeriodo('ANUAL')"  style="flex:1;padding:12px;border-radius:8px;border:1px solid #333;background:#0a0a0a;color:#888;cursor:pointer;">🗓️ Anual</button>
+                <button id="rDiario" onclick="selecionarPeriodo('DIARIO')" style="flex:1;padding:12px;border-radius:8px;border:2px solid #e60000;background:#1a0000;color:white;cursor:pointer;font-weight:bold;"> Diário</button>
+                <button id="rMensal" onclick="selecionarPeriodo('MENSAL')" style="flex:1;padding:12px;border-radius:8px;border:1px solid #333;background:#0a0a0a;color:#888;cursor:pointer;"> Mensal</button>
+                <button id="rAnual"  onclick="selecionarPeriodo('ANUAL')"  style="flex:1;padding:12px;border-radius:8px;border:1px solid #333;background:#0a0a0a;color:#888;cursor:pointer;"> Anual</button>
             </div>
 
             <div id="inputDiario" style="margin-bottom:20px;">
@@ -2812,7 +2814,7 @@ function abrirModalRelatorio() {
             <div id="relatorioStatus" style="min-height:18px;margin-bottom:16px;font-size:13px;color:#888;"></div>
 
             <div style="display:flex;gap:10px;">
-                <button onclick="gerarRelatorioXLSX()" style="flex:2;background:#e60000;color:white;border:none;padding:14px;border-radius:8px;font-weight:bold;cursor:pointer;font-size:15px;">⬇️ BAIXAR XLSX</button>
+                <button onclick="gerarRelatorioXLSX()" style="flex:2;background:#e60000;color:white;border:none;padding:14px;border-radius:8px;font-weight:bold;cursor:pointer;font-size:15px;"> BAIXAR XLSX</button>
                 <button onclick="document.getElementById('modalRelatorio').remove()" style="flex:1;background:#222;color:#aaa;border:1px solid #333;padding:14px;border-radius:8px;cursor:pointer;">FECHAR</button>
             </div>
         </div>`;
@@ -2862,13 +2864,13 @@ async function gerarRelatorioXLSX() {
 
     try {
         const url = `${API_URL}/relatorio/xlsx?tipo=${periodo}${dataParam ? '&dataInicio=' + dataParam : ''}`;
-        status.textContent = '📊 Gerando planilha formatada...';
+        status.textContent = ' Gerando planilha formatada...';
         status.style.color = '#ffcc00';
 
         const res = await fetch(url);
         if (!res.ok) {
             const t = await res.text();
-            status.textContent = '❌ Erro: ' + t;
+            status.textContent = ' Erro: ' + t;
             status.style.color = 'red';
             return;
         }
@@ -2886,12 +2888,12 @@ async function gerarRelatorioXLSX() {
         a.click();
         URL.revokeObjectURL(a.href);
 
-        status.textContent = '✅ Relatório gerado com sucesso!';
+        status.textContent = ' Relatório gerado com sucesso!';
         status.style.color = '#00cc44';
 
     } catch (err) {
         console.error('Erro ao gerar relatório:', err);
-        status.textContent = '❌ Erro ao gerar o relatório. Verifique o console.';
+        status.textContent = ' Erro ao gerar o relatório. Verifique o console.';
         status.style.color = 'red';
     }
 }
