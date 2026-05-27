@@ -57,7 +57,34 @@
         .bell-btn { background: none; border: none; font-size: 20px; cursor: pointer; position: relative; color: white; display: inline-flex; align-items: center; }
         .alert-dot { position: absolute; top: 0; right: 0; width: 10px; height: 10px; background: red; border-radius: 50%; box-shadow: 0 0 6px red; }
         .session-timer { color: var(--yellow); font-family: monospace; font-weight: bold; }
-        #modalNotificacao { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: auto; min-width: 360px; max-width: 580px; background: transparent; border: none; padding: 0; z-index: 2000; display: none; }
+        /* Overlay escuro de fundo */
+        #modalNotificacao {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.82);
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        #modalNotificacao.ativo {
+            display: flex !important;
+        }
+        /* Painel interno centralizado */
+        #modalNotificacao > div {
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 14px;
+            padding: 24px;
+            min-width: 340px;
+            max-width: 560px;
+            width: 90%;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 0 40px rgba(0,0,0,0.8);
+        }
         /* No seu <style> */
 .setor-S { border-left: 10px solid #ffcc00; } /* Solda - Amarelo */
 .setor-M { border-left: 10px solid #0056b3; } /* Montagem - Azul */
@@ -335,23 +362,30 @@ function atualizarBellBadge(tem) {
         : `&#128276;`;
 }
 
+function _abrirModal(htmlInner) {
+    const modal = document.getElementById('modalNotificacao');
+    modal.innerHTML = '<div>' + htmlInner + '</div>';
+    modal.classList.add('ativo');
+}
+
+function _fecharModal() {
+    const modal = document.getElementById('modalNotificacao');
+    modal.classList.remove('ativo');
+    modal.style.display = '';
+}
+
 function abrirNotificacaoAtraso() {
     const ferramentasAtrasadas = ativosBackup.filter(f => {
         const status = ((f.status || f.Status || '').toString().toUpperCase());
         return status === 'EM_USO' || status === 'ATRASADO';
     });
 
-    const modal = document.getElementById('modalNotificacao');
-    modal.style.display = 'block';
-
     if (ferramentasAtrasadas.length === 0) {
-        modal.innerHTML = `
-            <div style="background:#111; border:1px solid #333; border-radius:12px; padding:25px; min-width:340px; max-width:520px;">
-                <h2 style="color:#00cc00; margin-top:0; font-size:16px;">Sem pendencias</h2>
-                <p style="color:#aaa; font-size:14px;">Nao ha ferramentas atrasadas ou em uso no momento.</p>
-                <button onclick="document.getElementById('modalNotificacao').style.display='none'"
-                        style="width:100%; background:#333; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer; margin-top:10px; font-weight:bold;">FECHAR</button>
-            </div>`;
+        _abrirModal(
+            '<h2 style="color:#00cc00; margin-top:0; font-size:16px;">✅ Sem pendências</h2>'
+            + '<p style="color:#aaa; font-size:14px;">Nenhuma ferramenta em atraso ou em uso no momento.</p>'
+            + '<button onclick="_fecharModal()" style="width:100%; background:#333; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer; margin-top:10px; font-weight:bold;">FECHAR</button>'
+        );
         return;
     }
 
@@ -359,27 +393,29 @@ function abrirNotificacaoAtraso() {
 
     const cards = ferramentasAtrasadas.map(f => {
         const colaborador = (f.colaborador || f.Colaborador || 'Operador desconhecido').toUpperCase();
-        const cracha      = f.colaboradorId || f.ColaboradorId || f.usuarioId || f.UsuarioId || colaborador;
         const desc        = (f.descricao || f.Descricao || 'Ferramenta').toUpperCase();
         const codigo      = f.codigoBarras || f.CodigoBarras || ('TSEA-' + String(f.id||f.Id).padStart(3,'0'));
         const status      = (f.status || f.Status || '').toUpperCase();
         const corStatus   = status === 'ATRASADO' ? '#ff4444' : '#ffaa00';
-        return '<div style="background:#1a1a1a; border:1px solid #333; border-radius:8px; padding:14px 16px; margin-bottom:10px;">'
-            + '<div style="font-size:11px; color:#e60000; font-weight:bold; letter-spacing:1px; margin-bottom:6px;">AVISO</div>'
-            + '<div style="color:white; font-size:14px; font-weight:bold; margin-bottom:4px;">Funcionario <span style="color:#e60000;">' + cracha + '</span> esta com a ferramenta</div>'
-            + '<div style="color:#ddd; font-size:14px;">' + desc + ' <span style="color:#e60000; font-family:monospace;">(' + codigo + ')</span></div>'
-            + '<div style="margin-top:6px;"><span style="color:' + corStatus + '; font-size:11px; font-weight:bold;"> ' + status + '</span></div>'
+        const corBorda    = status === 'ATRASADO' ? '#4d0000' : '#332200';
+        return '<div style="background:#1a1a1a; border:1px solid ' + corBorda + '; border-left:3px solid ' + corStatus + '; border-radius:8px; padding:14px 16px; margin-bottom:10px;">'
+            + '<div style="font-size:10px; color:#e60000; font-weight:bold; letter-spacing:1px; margin-bottom:4px;">AVISO</div>'
+            + '<div style="color:white; font-size:13px; font-weight:bold; margin-bottom:2px;">Funcionário <span style="color:#e60000;">' + colaborador + '</span></div>'
+            + '<div style="color:#aaa; font-size:12px; margin-bottom:6px;">está com a ferramenta</div>'
+            + '<div style="color:#ddd; font-size:13px; font-weight:bold;">' + desc + ' <span style="color:#e60000; font-family:monospace; font-size:12px;">(' + codigo + ')</span></div>'
+            + '<div style="margin-top:6px;"><span style="color:' + corStatus + '; font-size:11px; font-weight:bold; background:' + corBorda + '; padding:2px 8px; border-radius:4px; border:1px solid ' + corStatus + ';">' + status + '</span></div>'
             + '</div>';
     }).join('');
 
-    modal.innerHTML = '<div style="background:#111; border:1px solid #444; border-radius:12px; padding:22px; min-width:360px; max-width:560px; max-height:80vh; display:flex; flex-direction:column;">'
-        + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">'
-        + '<h2 style="color:#e60000; margin:0; font-size:16px;">Ferramentas em Atraso (' + ferramentasAtrasadas.length + ')</h2>'
-        + '<button onclick="document.getElementById(\'modalNotificacao\').style.display=\'none\'" style="background:none; border:none; color:#666; font-size:20px; cursor:pointer;">x</button>'
+    _abrirModal(
+        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">'
+        + '<div><h2 style="color:#e60000; margin:0; font-size:16px;">🔔 Ferramentas em Uso</h2>'
+        + '<small style="color:#666; font-size:11px;">' + ferramentasAtrasadas.length + ' pessoa(s) com ferramenta</small></div>'
+        + '<button onclick="_fecharModal()" style="background:none; border:none; color:#666; font-size:22px; cursor:pointer; line-height:1;">×</button>'
         + '</div>'
-        + '<div style="overflow-y:auto; flex:1; padding-right:4px; margin-bottom:14px;">' + cards + '</div>'
+        + '<div style="overflow-y:auto; max-height:55vh; padding-right:4px; margin-bottom:14px;">' + cards + '</div>'
         + '<button onclick="enviarAvisoAdminTodos()" style="width:100%; background:#e60000; color:white; border:none; padding:14px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:15px; letter-spacing:1px;">ENVIAR AVISO</button>'
-        + '</div>';
+    );
 }
 
 function mostrarNotificacaoAtraso(ferramenta) {
@@ -396,12 +432,11 @@ function abrirNotificacaoAtrasoOperador() {
         .then(res => res.ok ? res.json() : [])
         .then(avisoLista => {
             if (!avisoLista || avisoLista.length === 0) {
-                document.getElementById('modalNotificacao').style.display = 'block';
-                document.getElementById('modalNotificacao').innerHTML = `
-                    <h2 style="color: #00cc00; margin-top: 0;">Tudo certo</h2>
-                    <p>Você não possui avisos pendentes enviados pelo administrador.</p>
-                    <button onclick="document.getElementById('modalNotificacao').style.display='none'" style="width:100%; background:#333; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer;">FECHAR</button>
-                `;
+                _abrirModal(
+                    '<h2 style="color:#00cc00; margin-top:0; font-size:18px;">✅ Tudo certo</h2>'
+                    + '<p style="color:#aaa; font-size:14px;">Você não possui avisos pendentes do administrador.</p>'
+                    + '<button onclick="_fecharModal()" style="width:100%; background:#333; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer; font-weight:bold; margin-top:10px;">FECHAR</button>'
+                );
                 atualizarBellBadge(false);
                 return;
             }
@@ -418,27 +453,28 @@ function abrirNotificacaoAtrasoOperador() {
 }
 
 function mostrarNotificacaoOperador(aviso) {
-    const mensagem = aviso.mensagem || 'Voce recebeu um aviso do administrador.';
+    const mensagem = aviso.mensagem || 'Você recebeu um aviso do administrador.';
+    const avisoId = aviso.id || aviso.Id;
 
-    document.getElementById('modalNotificacao').style.display = 'block';
-    document.getElementById('modalNotificacao').innerHTML =
-        '<div style="background:#111; border:2px solid #e60000; border-radius:12px; padding:24px; min-width:300px; max-width:420px;">'
-        + '<h2 style="color:#e60000; margin-top:0; font-size:16px;">Aviso do administrador</h2>'
-        + '<p style="color:#ddd; font-size:14px; line-height:1.5; margin-bottom:20px;">' + mensagem + '</p>'
-        + '<button onclick="devolverPorAviso(' + aviso.id + ')" style="width:100%; background:#e60000; color:white; border:none; padding:14px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:15px; letter-spacing:1px; margin-bottom:10px;">DEVOLVER</button>'
-
-        + '</div>';
+    _abrirModal(
+        '<div style="text-align:center; margin-bottom:16px; font-size:32px;">🔔</div>'
+        + '<h2 style="color:#e60000; margin-top:0; font-size:18px; text-align:center;">Aviso do Administrador</h2>'
+        + '<div style="background:#1a1a1a; border:1px solid #333; border-radius:8px; padding:16px; margin-bottom:20px;">'
+        + '<p style="color:#ddd; font-size:14px; line-height:1.6; margin:0;">' + mensagem + '</p>'
+        + '</div>'
+        + '<p style="color:#ffcc00; font-size:12px; text-align:center; margin-bottom:16px;">⚠️ Devolva a ferramenta agora para remover este aviso.</p>'
+        + '<button onclick="devolverPorAviso(' + avisoId + ')" style="width:100%; background:#0056b3; color:white; border:none; padding:16px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:16px; letter-spacing:1px; margin-bottom:10px;">📦 DEVOLVER AGORA</button>'
+        + '<button onclick="_fecharModal()" style="width:100%; background:#222; color:#aaa; border:1px solid #444; padding:12px; border-radius:8px; cursor:pointer; font-size:13px;">Fechar</button>'
+    );
 }
 
 async function devolverPorAviso(avisoId) {
-    // Marca o aviso como lido e abre a tela de devolucao automaticamente
     try {
         await fetch(`${API_URL}/avisos/${avisoId}/lido`, { method: 'POST' });
     } catch(e) {}
     notificacaoAtiva = false;
     atualizarBellBadge(false);
-    document.getElementById('modalNotificacao').style.display = 'none';
-    // Abre direto a tela de devolucao
+    _fecharModal();
     scan('DEVOLVER');
 }
 
@@ -448,7 +484,7 @@ async function marcarAvisoLido(id) {
         if (res.ok) {
             notificacaoAtiva = false;
             atualizarBellBadge(false);
-            document.getElementById('modalNotificacao').style.display = 'none';
+            _fecharModal();
             await carregarAvisosOperador();
         } else {
             const text = await res.text();
@@ -502,11 +538,11 @@ async function enviarAvisoAdminTodos() {
         } catch(e) { erros++; }
     }
 
-    document.getElementById('modalNotificacao').style.display = 'none';
+    document.getElementById('modalNotificacao').classList.remove('ativo');
     if (erros === 0) {
         alert('Aviso enviado para ' + enviados + ' operador(es) com sucesso!');
     } else {
-        alert('Avisos enviados: ' + enviados + '. Nao foi possivel enviar para: ' + erros + ' (operador sem cadastro ou erro de conexao).');
+        alert('Avisos enviados: ' + enviados + '. Não foi possível enviar para: ' + erros + ' (operador sem cadastro ou erro de conexão).');
     }
 }
 
@@ -1637,7 +1673,7 @@ async function mostrarOficina() {
 
     renderizarTabelaOficina(ferramentas);
 
-    // Scanner no campo de busca da oficina
+    
     const buscaOfEl = document.getElementById('buscaCodigoBarras');
     if (buscaOfEl) {
         scannerSafeInput(buscaOfEl, (val) => filtrarPorCodigo(val));
@@ -1676,7 +1712,7 @@ function abrirModalNovaFerramenta() {
         </div>
     `;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
-    // Foca no campo de código de barras automaticamente
+    
     const novoCodigoInput = document.getElementById('novoCodigo');
     setTimeout(() => novoCodigoInput.focus(), 100);
 
@@ -1739,7 +1775,7 @@ function abrirModalEdicao(id) {
         return;
     }
 
-    // .NET serializa como camelCase: codigoBarras, descricao, setor, status
+    
     const codigoBarras = ferramenta.codigoBarras || ferramenta.CodigoBarras || ("TSEA-" + String(ferramenta.id || ferramenta.Id).padStart(3,"0"));
     const descricao    = ferramenta.descricao    || ferramenta.Descricao    || '';
     const setor        = (ferramenta.setor       || ferramenta.Setor        || 'ALMOXERIFADO').toUpperCase();
@@ -1884,14 +1920,14 @@ async function tirarDaManutencao(id) {
     }
 }
 
-// Função para buscar uma ferramenta específica pelo código
+
 async function buscarNaOficina(id) {
     if (!id) return;
     
     const res = await fetch(`${API_URL}/ferramentas`);
     const dados = await res.json();
     
-    // Procura a ferramenta exata
+    
     const ferramenta = dados.find(f => (f.id || f.Id).toString() === id.trim());
 
     const areaResultado = document.getElementById('resultadoOficina');
@@ -1925,7 +1961,7 @@ async function cadastrarFerramenta() {
     const novaFerramenta = {
         Descricao: nome,
         Status: "DISPONIVEL",
-        Setor: "OFICINA", // Define um setor padrão
+        Setor: "OFICINA", 
         VidaUtil: 100
     };
 
@@ -1938,8 +1974,8 @@ async function cadastrarFerramenta() {
 
         if (response.ok) {
             alert(" Ferramenta cadastrada com sucesso!");
-            document.getElementById('inputCadastro').value = ""; // Limpa o campo
-            mostrarOficina(); // RECARREGA OS CARDS NA TELA
+            document.getElementById('inputCadastro').value = ""; 
+            mostrarOficina(); 
         } else {
             alert(" Erro ao cadastrar no banco.");
         }
@@ -1948,13 +1984,13 @@ async function cadastrarFerramenta() {
         alert("Servidor offline ou erro na rede.");
     }
 }
-// Função para filtrar na tela sem recarregar
+
 function filtrarAdmin(setor) {
     const filtrados = setor === 'TODOS' ? ativos : ativos.filter(a => a.setor === setor);
     document.getElementById('corpoTabela').innerHTML = renderizarLinhas(filtrados);
 }
 
-// Função auxiliar para gerar as linhas da tabela
+
 function renderizarLinhas(lista) {
     return lista.map(i => `
         <tr>
@@ -1966,7 +2002,7 @@ function renderizarLinhas(lista) {
 }
 
 
-// Função auxiliar para gerar as linhas da tabela
+
 function renderizarLinhas(lista) {
     return lista.map(i => `
         <tr>
@@ -1977,7 +2013,7 @@ function renderizarLinhas(lista) {
     `).join('');
 }
 
-//  NOVO: Função para renderizar a tabela do Almoxerifado
+
 function renderizarTabelaAlmoxerifado(lista) {
     const corpo = document.getElementById('tabelaAlmoxerifadoCorpo');
     if (!corpo) return;
@@ -2032,7 +2068,7 @@ async function mostrarAlmoxerifado() {
     
     if (!res.ok) console.error('Erro ao buscar ferramentas:', ferramentasResposta);
 
-    // Filtra apenas as ferramentas que estão no almoxerifado
+    
     const disponiveis = ferramentas.filter(f => {
         const setorAtual = (f.setor || f.Setor || "").toString().trim().toUpperCase();
         return setorAtual === "" || setorAtual === "GERAL" || setorAtual === "ALMOXERIFADO" || setorAtual === "ALMOXARIFADO";
@@ -2098,22 +2134,22 @@ async function mostrarAlmoxerifado() {
     renderizarTabelaAlmoxerifado(disponiveis);
     atualizarBellBadge(notificacaoAtiva);
 
-    // Scanner no campo de busca do almoxerifado
+    
     const buscaAlmEl = document.getElementById('buscaAlmoxerifado');
     if (buscaAlmEl) {
         buscaAlmEl.focus();
-        // Filtra a cada tecla digitada (digitação manual e scanner)
+       
         buscaAlmEl.addEventListener('input', () => {
             filtrarAlmoxerifado(buscaAlmEl.value);
         });
-        // Scanner: dispara no Enter e limpa o campo para novo bip
+        
         scannerSafeInput(buscaAlmEl, (val) => {
             filtrarAlmoxerifado(val);
         });
     }
 }
 
-//  NOVO: Modal para retirar ferramenta do almoxerifado
+
 function abrirModalRetiradaAlmoxerifado(ferramentaId, codigo, descricao) {
     document.body.insertAdjacentHTML('beforeend', `
         <div id="modalRetirada" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; justify-content: center; align-items: center; z-index: 2000;">
@@ -2181,7 +2217,7 @@ async function confirmarRetiradaAlmoxerifado(ferramentaId) {
         if (response.ok) {
             alert(` Ferramenta movida para ${setorDestino} com sucesso!`);
             fecharModalRetirada();
-            mostrarAlmoxerifado(); // Atualiza a lista
+            mostrarAlmoxerifado(); 
         } else {
             const erro = await response.text();
             alert(` Erro: ${erro}`);
@@ -2203,7 +2239,7 @@ function abrirModalFerramenta() {
     }).then(res => {
         if (res.ok) {
             alert("Ferramenta adicionada!");
-            mostrarAdmin(); // Atualiza a lista
+            mostrarAdmin(); 
         }
     });
 }
@@ -2291,7 +2327,7 @@ function mostrarLogin() {
             if (forgotButton) forgotButton.style.display = 'none';
         }
 
-        // Se trocar o crachá, esconde a área de email novamente
+        
         const emailArea = document.getElementById('emailCadastroArea');
         if (emailArea) emailArea.style.display = 'none';
     };
@@ -2303,7 +2339,7 @@ function mostrarLogin() {
 
         let cleanedValue = normalizeScannerBarcode(barcodeInput.value);
 
-        // Se veio do scanner (Enter chegou menos de 100ms após última tecla), remove o char extra
+       
         if (_keyTimes.length > 0 && (Date.now() - _keyTimes[_keyTimes.length - 1]) < 100) {
             if (cleanedValue.length > 1) cleanedValue = cleanedValue.slice(0, -1);
         }
@@ -2398,7 +2434,7 @@ function mostrarLogin() {
     inputBip.addEventListener('keypress', (e) => {
         if (e.key !== 'Enter') return;
 
-        // Remove char extra do scanner (Enter muito rápido após última tecla)
+        
         if (_keyTimesBip.length > 0 && (Date.now() - _keyTimesBip[_keyTimesBip.length - 1]) < 100) {
             if (e.target.value.length > 1)
                 e.target.value = e.target.value.slice(0, -1);
@@ -2414,7 +2450,7 @@ function mostrarLogin() {
             return;
         }
 
-        // Se o operador digitou só o número (1, 2, 3...), converte para TSEA-001
+        
         if (/^\d+$/.test(valorDigitado)) {
             valorDigitado = "TSEA-" + valorDigitado.padStart(3, "0");
         }
@@ -2423,7 +2459,7 @@ function mostrarLogin() {
     });
 }
 
-    // Remove o char extra do scanner se Enter chegou < 100ms após última tecla
+    
     function scannerSafeInput(inputEl, callback) {
         let _kt = [];
         inputEl.addEventListener('keydown', (e) => {
@@ -2438,11 +2474,10 @@ function mostrarLogin() {
                 if (callback) callback(inputEl.value);
             }
         });
-        // Também remove no keyup para campos que usam onkeyup
+        
         inputEl.addEventListener('keyup', (e) => {
             if (e.key !== 'Enter' && _kt.length > 0) {
-                // Verifica se o valor atual tem char extra (última digitação muito rápida)
-                // Não faz nada aqui — só remove no Enter
+                
             }
         });
     }
@@ -2457,7 +2492,6 @@ function mostrarLogin() {
     }
 
 
-// ===================== INVENTÁRIO DE ARMÁRIOS =====================
 
 async function mostrarInventario() {
     const res = await fetch(`${API_URL}/ferramentas`);
@@ -2607,7 +2641,7 @@ async function mostrarInventario() {
 }
 
 function abrirInventarioSetor(setor) {
-    // Busca as ferramentas exibidas no bloco do setor para montar o HTML de impressão
+    
     fetch(`${API_URL}/ferramentas`)
         .then(r => r.json())
         .then(todas => {
@@ -2774,9 +2808,6 @@ function imprimirInventarioTodos() {
         .catch(() => alert(' Erro ao carregar ferramentas para impressão.'));
 }
 
-// ===================== FIM INVENTÁRIO =====================
-
-// ===================== RELATÓRIOS XLSX =====================
 
 function abrirModalRelatorio() {
     const hoje = new Date().toISOString().split('T')[0];
@@ -2898,7 +2929,6 @@ async function gerarRelatorioXLSX() {
     }
 }
 
-// ===================== FIM RELATÓRIOS =====================
 
     mostrarLogin();
 </script>
