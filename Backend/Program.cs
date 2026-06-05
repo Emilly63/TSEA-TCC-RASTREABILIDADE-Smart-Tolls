@@ -19,7 +19,13 @@ builder.Services.AddCors(options =>
 });
 
 // --- CONFIGURAÇÃO DO BANCO DE DADOS (MYSQL) ---
-var connectionString = "server=localhost;port=3306;database=RASTREABILIDADES_TSEA;user=root;password=";
+var dbHost = Environment.GetEnvironmentVariable("DB_HOST") ?? "localhost";
+var dbPort = Environment.GetEnvironmentVariable("DB_PORT") ?? "3306";
+var dbName = Environment.GetEnvironmentVariable("DB_NAME") ?? "RASTREABILIDADES_TSEA";
+var dbUser = Environment.GetEnvironmentVariable("DB_USER") ?? "root";
+var dbPassword = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "";
+
+var connectionString = $"server={dbHost};port={dbPort};database={dbName};user={dbUser};password={dbPassword};";
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 31))));
 
