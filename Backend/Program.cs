@@ -64,6 +64,7 @@ var smtpConfig = builder.Configuration.GetSection("Smtp").Get<SmtpSettings>() ??
 var notificacoesPendentes = new List<AvisoPendente>();
 var proximoAvisoId = 1;
 
+// --- LOCAL FUNCTIONS (MUST BE BEFORE app.Run())---
 static string HashPassword(string password)
 {
     const int iterations = 100_000;
