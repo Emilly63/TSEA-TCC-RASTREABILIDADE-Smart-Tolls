@@ -18,16 +18,16 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
 });
 
-// --- CONFIGURAÇÃO DO BANCO DE DADOS (MYSQL) ---
+// --- CONFIGURAÇÃO DO BANCO DE DADOS (POSTGRESQL) ---
 var dbHost = Environment.GetEnvironmentVariable("DB_HOST") ?? "localhost";
-var dbPort = Environment.GetEnvironmentVariable("DB_PORT") ?? "3306";
+var dbPort = Environment.GetEnvironmentVariable("DB_PORT") ?? "5432";
 var dbName = Environment.GetEnvironmentVariable("DB_NAME") ?? "RASTREABILIDADES_TSEA";
-var dbUser = Environment.GetEnvironmentVariable("DB_USER") ?? "root";
+var dbUser = Environment.GetEnvironmentVariable("DB_USER") ?? "postgres";
 var dbPassword = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "";
 
-var connectionString = $"server={dbHost};port={dbPort};database={dbName};user={dbUser};password={dbPassword};";
+var connectionString = $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPassword};";
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 31))));
+    options.UseNpgsql(connectionString));
 
 // Armazena tokens temporários de reset de senha
 var resetTokens = new Dictionary<string, (string Barcode, DateTime Expiry)>();
@@ -57,38 +57,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.EnsureCreated();
-
-    var connection = db.Database.GetDbConnection();
-    connection.Open();
-    using var command = connection.CreateCommand();
-    command.CommandText = @"
-        SELECT COUNT(*)
-        FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'Usuarios'
-          AND COLUMN_NAME = 'PasswordHash'
-    ";
-    var exists = Convert.ToInt32(command.ExecuteScalar() ?? 0) > 0;
-    if (!exists)
-    {
-        command.CommandText = "ALTER TABLE Usuarios ADD COLUMN PasswordHash VARCHAR(255) DEFAULT NULL;";
-        command.ExecuteNonQuery();
-    }
-
-    command.CommandText = @"
-        SELECT COUNT(*)
-        FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'Usuarios'
-          AND COLUMN_NAME = 'Email'
-    ";
-    var emailExists = Convert.ToInt32(command.ExecuteScalar() ?? 0) > 0;
-    if (!emailExists)
-    {
-        command.CommandText = "ALTER TABLE Usuarios ADD COLUMN Email VARCHAR(255) DEFAULT NULL;";
-        command.ExecuteNonQuery();
-    }
-    connection.Close();
+    // PostgreSQL automatically applies EF Core migrations/schema via EnsureCreated
 }
 
 var smtpConfig = builder.Configuration.GetSection("Smtp").Get<SmtpSettings>() ?? new SmtpSettings();

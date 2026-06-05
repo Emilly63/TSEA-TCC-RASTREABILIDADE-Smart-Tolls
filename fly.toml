@@ -13,8 +13,9 @@ primary_region = 'gru'
   ASPNETCORE_ENVIRONMENT = 'Production'
   # Database connection - set via fly secrets
   DB_HOST = 'localhost'
-  DB_PORT = '3306'
+  DB_PORT = '5432'
   DB_NAME = 'RASTREABILIDADES_TSEA'
+  DB_USER = 'postgres'
 
 [http_service]
   internal_port = 8080

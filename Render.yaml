@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: smart-tolls-api
+    env: dotnet
+    region: ohio
+    plan: free
+    buildCommand: dotnet publish -c Release -o out Backend/
+    startCommand: dotnet out/Backend.dll
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ConnectionStrings__DefaultConnection
+        scope: run
+        sync: false
+  
+  - type: pserv
+    name: smart-tolls-db
+    env: mysql
+    plan: free
+    region: ohio
+    ipAllowList: []
+    envVars:
+      - key: MYSQL_DATABASE
+        value: RASTREABILIDADES_TSEA
+      - key: MYSQL_USER
+        value: tsea_user
+      - key: MYSQL_ROOT_PASSWORD
+        scope: build
+        sync: false

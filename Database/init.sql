@@ -1,104 +1,92 @@
-﻿-- 1. ENTRA NO MODO DE MANUTENÇÃO (DESATIVA TRAVAS)
-SET FOREIGN_KEY_CHECKS = 0;
+﻿-- PostgreSQL initialization script for RASTREABILIDADES_TSEA
+-- 1. CREATE DATABASE (run in default postgres database first)
+-- CREATE DATABASE RASTREABILIDADES_TSEA;
 
--- 2. GARANTE QUE O BANCO EXISTE E ESTÁ SELECIONADO
-CREATE DATABASE IF NOT EXISTS RASTREABILIDADES_TSEA;
-USE RASTREABILIDADES_TSEA;
+-- 2. CONNECT TO RASTREABILIDADES_TSEA DATABASE AND RUN BELOW
 
--- 3. APAGA AS TABELAS NA ORDEM CERTA
+-- Create ENUM types
+CREATE TYPE setor_enum AS ENUM ('ADMIN', 'SOLDAGEM', 'MONTAGEM', 'USINAGEM', 'OPERADOR', 'SOLDA', 'PRODUCAO');
+CREATE TYPE status_enum AS ENUM ('ATIVO', 'INATIVO');
+CREATE TYPE ferramenta_status_enum AS ENUM ('DISPONIVEL', 'EM_USO', 'MANUTENCAO');
+CREATE TYPE motivo_saida_enum AS ENUM ('MANUAL', 'EXPIRADO', 'SISTEMA');
+
+-- 3. DROP EXISTING TABLES (if they exist)
 DROP TABLE IF EXISTS Movimentacoes;
 DROP TABLE IF EXISTS LogsAcesso;
 DROP TABLE IF EXISTS Ferramentas;
 DROP TABLE IF EXISTS Usuarios;
 
--- 4. CRIAÇÃO DAS TABELAS COM OS CAMPOS QUE O SEU C# PRECISA
+-- 4. CREATE USUARIOS TABLE
 CREATE TABLE Usuarios (
-    Id INT PRIMARY KEY AUTO_INCREMENT,
+    Id SERIAL PRIMARY KEY,
     Nome VARCHAR(100),
     CodigoBarras VARCHAR(20) UNIQUE,
-    Setor ENUM('ADMIN', 'SOLDAGEM', 'MONTAGEM', 'USINAGEM', 'OPERADOR', 'SOLDA', 'PRODUCAO'),
-    Status ENUM('ATIVO', 'INATIVO') DEFAULT 'ATIVO',
-    Email VARCHAR(255) DEFAULT NULL,          -- ✅ já incluso
-    PasswordHash VARCHAR(255) DEFAULT NULL    -- ✅ já incluso
+    Setor setor_enum DEFAULT 'OPERADOR',
+    Status status_enum DEFAULT 'ATIVO',
+    Email VARCHAR(255),
+    PasswordHash VARCHAR(255)
 );
 
+-- 5. CREATE FERRAMENTAS TABLE
 CREATE TABLE Ferramentas (
-    Id VARCHAR(50) PRIMARY KEY, -- Aumentado para evitar erro de tamanho
+    Id SERIAL PRIMARY KEY,
     Descricao VARCHAR(100),
-    Status ENUM('DISPONIVEL', 'EM_USO', 'MANUTENCAO') DEFAULT 'DISPONIVEL'
+    Status ferramenta_status_enum DEFAULT 'DISPONIVEL',
+    Colaborador VARCHAR(100),
+    VidaUtil INT DEFAULT 100,
+    Setor VARCHAR(50) DEFAULT 'GERAL'
 );
-ALTER TABLE Ferramentas MODIFY COLUMN Id INT AUTO_INCREMENT;
-ALTER TABLE Ferramentas; 
--- Adiciona a coluna para guardar o nome de quem pegou a ferramenta
-ALTER TABLE Ferramentas ADD COLUMN Colaborador VARCHAR(100) DEFAULT NULL;
-ALTER TABLE ferramentas ADD COLUMN VidaUtil INT DEFAULT 100;
 
--- 1. Adiciona a coluna física na tabela
-ALTER TABLE ferramentas ADD COLUMN Setor VARCHAR(50) DEFAULT 'GERAL';
-
--- 2. Define alguns setores para teste (senão tudo continuará como GERAL)
-UPDATE ferramentas SET Setor = 'SOLDAGEM' WHERE Id = 1;
-UPDATE ferramentas SET Setor = 'MONTAGEM' WHERE Id = 2;
-UPDATE ferramentas SET Setor = 'USINAGEM' WHERE Id = 3;
-CREATE TABLE IF NOT EXISTS Movimentacoes (
-    Id INT AUTO_INCREMENT PRIMARY KEY,
-    FerramentaId INT, -- MUDADO DE VARCHAR PARA INT
+-- 6. CREATE MOVIMENTACOES TABLE
+CREATE TABLE Movimentacoes (
+    Id SERIAL PRIMARY KEY,
+    FerramentaId INT REFERENCES Ferramentas(Id),
     UsuarioId VARCHAR(20),
-    DataRetirada DATETIME DEFAULT CURRENT_TIMESTAMP,
-    DataDevolucao DATETIME NULL,
-    FOREIGN KEY (FerramentaId) REFERENCES Ferramentas (Id)
+    DataRetirada TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    DataDevolucao TIMESTAMP NULL
 );
 
-USE RASTREABILIDADES_TSEA;
-
--- Ajustando a tabela de Logs para o novo formato
-DROP TABLE IF EXISTS LogsAcesso;
-
+-- 7. CREATE LOGSACESSO TABLE
 CREATE TABLE LogsAcesso (
-    Id INT PRIMARY KEY AUTO_INCREMENT,
+    Id SERIAL PRIMARY KEY,
     UsuarioId VARCHAR(50),
-    DataEntrada DATETIME DEFAULT CURRENT_TIMESTAMP,
-    DataSaida DATETIME NULL,
-    MotivoSaida ENUM('MANUAL', 'EXPIRADO', 'SISTEMA') DEFAULT NULL,
+    DataEntrada TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    DataSaida TIMESTAMP NULL,
+    MotivoSaida motivo_saida_enum,
     StatusAcesso VARCHAR(20) DEFAULT 'ATIVO'
 );
-SET FOREIGN_KEY_CHECKS = 0;
--- Inserir um Administrador (Note o 'A' no final do crachá)
+
+-- 8. INSERT INITIAL DATA
+
+-- Insert Administrator
 INSERT INTO Usuarios (Nome, CodigoBarras, Setor, Status, Email, PasswordHash) 
 VALUES ('ADMINISTRADOR PADRAO', 'TSEA-001A', 'ADMIN', 'ATIVO', 'emillysabrina152009@gmail.com', '123456');
 
-
-
-
--- Inserir alguns Operadores para teste
+-- Insert Test Operators
 INSERT INTO Usuarios (Nome, CodigoBarras, Setor, Status, Email) 
-VALUES ('OPERADOR TESTE 01', '1010', 'OPERADOR', 'ATIVO', 'emillysabrinabarbosaalmeida@gmail.com'),
-       ('OPERADOR TESTE 02', '2020', 'OPERADOR', 'ATIVO', 'joaopedropereiragomed@gmail.com');
+VALUES 
+    ('OPERADOR TESTE 01', '1010', 'OPERADOR', 'ATIVO', 'emillysabrinabarbosaalmeida@gmail.com'),
+    ('OPERADOR TESTE 02', '2020', 'OPERADOR', 'ATIVO', 'joaopedropereiragomed@gmail.com');
 
--- Inserir Ferramentas Iniciais
-INSERT INTO Ferramentas (Descricao, Status) 
-VALUES ('FURADEIRA BOSCH 01', 'DISPONIVEL'),
-       ('ESMERILHADEIRA 02', 'DISPONIVEL'),
-       ('CHAVE DE IMPACTO 03', 'DISPONIVEL');
-SET SQL_SAFE_UPDATES = 1;
--- 6. REATIVA AS TRAVAS DE SEGURANÇA
-SET FOREIGN_KEY_CHECKS = 1;
+-- Insert Initial Tools
+INSERT INTO Ferramentas (Descricao, Status, Setor) 
+VALUES 
+    ('FURADEIRA BOSCH 01', 'DISPONIVEL', 'SOLDAGEM'),
+    ('ESMERILHADEIRA 02', 'DISPONIVEL', 'MONTAGEM'),
+    ('CHAVE DE IMPACTO 03', 'DISPONIVEL', 'USINAGEM');
 
+-- 9. Create indexes for better performance
+CREATE INDEX idx_usuarios_codigobarras ON Usuarios(CodigoBarras);
+CREATE INDEX idx_ferramentas_status ON Ferramentas(Status);
+CREATE INDEX idx_movimentacoes_ferramentaid ON Movimentacoes(FerramentaId);
+CREATE INDEX idx_logsacesso_usuarioid ON LogsAcesso(UsuarioId);
 
-SET SQL_SAFE_UPDATES = 0;
-DESCRIBE ferramentas;
-UPDATE Ferramentas SET Status = 'DISPONIVEL';
-DELETE FROM Movimentacoes;
-
-SET SQL_SAFE_UPDATES = 1;
-
-
--- 7. VERIFICAÇÃO FINAL
-
-SELECT * FROM RASTREABILIDADES_TSEA.ferramentas WHERE Status = 'EM_USO';
-SELECT UsuarioId, DataEntrada, DataSaida, MotivoSaida FROM LogsAcesso;
-SELECT * FROM Usuarios;
-SELECT * FROM Ferramentas;
-SELECT * FROM Movimentacoes ORDER BY id DESC;
-SELECT Nome, Email FROM Usuarios WHERE Setor = 'ADMIN';
+-- 10. Verify data
+SELECT 'Usuarios' AS table_name, COUNT(*) as row_count FROM Usuarios
+UNION ALL
+SELECT 'Ferramentas', COUNT(*) FROM Ferramentas
+UNION ALL
+SELECT 'Movimentacoes', COUNT(*) FROM Movimentacoes
+UNION ALL
+SELECT 'LogsAcesso', COUNT(*) FROM LogsAcesso;
 
