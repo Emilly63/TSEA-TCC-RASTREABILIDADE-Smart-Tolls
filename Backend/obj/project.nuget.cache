@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "4GyNvDKJUgw=",
+  "dgSpecHash": "wB28yFgtvTQ=",
   "success": true,
-  "projectFilePath": "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\backend\\Backend.csproj",
+  "projectFilePath": "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\Backend\\Backend.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Emilly\\.nuget\\packages\\bouncycastle.cryptography\\2.6.2\\bouncycastle.cryptography.2.6.2.nupkg.sha512",
     "C:\\Users\\Emilly\\.nuget\\packages\\dapper\\2.1.72\\dapper.2.1.72.nupkg.sha512",

@@ -171,9 +171,43 @@
     background: #00ff00;
     border-radius: 3px;
 }
+.status-badge.disponivel { background: #004d00; color: #00ff00; }
 .status-badge.em_uso { background: #333; color: #fff; border: 1px solid #555; }
 .status-badge.atrasado { background: #4d0000; color: #ff4444; border: 1px solid red; }
-.status-badge.disponivel { background: #004d00; color: #00ff00; }
+
+/* Indicador de Porta */
+#indicadorPorta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    border: 1px solid #333;
+    transition: all 0.4s ease;
+    background: #1a1a1a;
+    cursor: default;
+}
+#indicadorPorta .porta-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+#indicadorPorta.porta-fechada { border-color: #00aa44; background: #001a0d; color: #00dd55; }
+#indicadorPorta.porta-fechada .porta-dot { background: #00dd55; box-shadow: 0 0 6px #00dd55; }
+#indicadorPorta.porta-aberta { border-color: #ffaa00; background: #1a1200; color: #ffcc44; }
+#indicadorPorta.porta-aberta .porta-dot { background: #ffcc44; box-shadow: 0 0 6px #ffcc44; }
+#indicadorPorta.porta-alerta { border-color: #ff3333; background: #1a0000; color: #ff4444; animation: portaAlertaPulse 0.8s ease-in-out infinite; }
+#indicadorPorta.porta-alerta .porta-dot { background: #ff4444; box-shadow: 0 0 8px #ff4444; }
+#indicadorPorta.porta-desconhecida { border-color: #333; background: #111; color: #666; }
+#indicadorPorta.porta-desconhecida .porta-dot { background: #555; }
+@keyframes portaAlertaPulse {
+    0%, 100% { box-shadow: 0 0 0px rgba(255,50,50,0.4); }
+    50% { box-shadow: 0 0 12px rgba(255,50,50,0.7); }
+}
 
    </style>
 </head>
@@ -226,6 +260,305 @@
     let notificacaoTimer = null;
     let notificacaoAtiva = false;
     let adminPollInterval = null;
+    let portaPollInterval = null;
+    let portaAlertaAtivo = false;
+    // ─── POLLING OPERADOR: detecta aviso CONFIRMAR_RETIRADA ──────────────────
+    let operadorAvisoPollInterval = null;
+    let modalConfirmarAberto = false;
+
+    function iniciarPollingAvisoOperador() {
+        if (operadorAvisoPollInterval) clearInterval(operadorAvisoPollInterval);
+        operadorAvisoPollInterval = setInterval(verificarAvisoConfirmarOperador, 4000);
+        verificarAvisoConfirmarOperador(); // imediato
+    }
+
+    function pararPollingAvisoOperador() {
+        if (operadorAvisoPollInterval) clearInterval(operadorAvisoPollInterval);
+        operadorAvisoPollInterval = null;
+    }
+
+    async function verificarAvisoConfirmarOperador() {
+        if (!currentUserId || modalConfirmarAberto) return;
+        try {
+            const res = await fetch(`${API_URL}/avisos/${encodeURIComponent(currentUserId)}`);
+            if (!res.ok) return;
+            const avisos = await res.json();
+            const aviso = (avisos || []).find(a =>
+                (a.mensagem || a.Mensagem || '').startsWith('CONFIRMAR_RETIRADA')
+            );
+            if (aviso) mostrarModalConfirmarRetirada(aviso);
+        } catch(e) {}
+    }
+
+    function mostrarModalConfirmarRetirada(aviso) {
+        if (modalConfirmarAberto) return;
+        modalConfirmarAberto = true;
+
+        const partes   = (aviso.mensagem || aviso.Mensagem || '').split('|');
+        const codigo   = partes[1] || '---';
+        const desc     = (partes[2] || 'Ferramenta').toUpperCase();
+        const avisoId  = aviso.id || aviso.Id;
+
+        // Remove modal anterior se existir
+        document.getElementById('modalConfirmarRetirada')?.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'modalConfirmarRetirada';
+        modal.style.cssText = [
+            'position:fixed', 'inset:0', 'width:100%', 'height:100%',
+            'background:rgba(0,0,0,0.93)', 'z-index:9999',
+            'display:flex', 'flex-direction:column',
+            'align-items:center', 'justify-content:center',
+            'backdrop-filter:blur(4px)'
+        ].join(';');
+
+        modal.innerHTML = `
+            <div style="text-align:center; max-width:480px; padding:0 20px;">
+                <div style="font-size:48px; margin-bottom:16px; animation:portaAlertaPulse 1s ease-in-out infinite;">&#128680;</div>
+                <h2 style="color:#ff3333; font-size:22px; margin:0 0 8px 0; text-transform:uppercase; letter-spacing:1px;">
+                    Ferramenta Retirada Sem Registro
+                </h2>
+                <p style="color:#aaa; font-size:14px; margin:0 0 20px 0;">
+                    O sensor detectou a retirada de uma ferramenta sem bipe no sistema.<br>
+                    Confirme o que aconteceu para continuar.
+                </p>
+
+                <div style="background:#1a0000; border:1px solid #ff3333; border-radius:10px; padding:16px 20px; margin-bottom:28px; text-align:left;">
+                    <div style="font-size:10px; color:#ff6666; font-weight:bold; letter-spacing:1px; margin-bottom:6px;">FERRAMENTA</div>
+                    <div style="color:white; font-size:18px; font-weight:bold; margin-bottom:4px;">${desc}</div>
+                    <div style="color:#ff9999; font-family:monospace; font-size:14px;">${codigo}</div>
+                </div>
+
+                <p style="color:#ffcc00; font-size:13px; margin:0 0 24px 0; font-weight:bold;">
+                    &#9888; Selecione uma opcao para continuar. Esta tela nao fecha ate voce escolher.
+                </p>
+
+                <div style="display:flex; gap:16px; justify-content:center;">
+                    <button onclick="responderConfirmarRetirada('RETIRAR', '${avisoId}', '${codigo}')"
+                        style="width:180px; height:120px; background:#1a4d1a; border:2px solid #28a745;
+                               border-radius:14px; color:#28a745; font-size:18px; font-weight:bold;
+                               cursor:pointer; display:flex; flex-direction:column; align-items:center;
+                               justify-content:center; gap:8px; transition:all 0.2s;"
+                        onmouseover="this.style.background='#28a745';this.style.color='white'"
+                        onmouseout="this.style.background='#1a4d1a';this.style.color='#28a745'">
+                        <span style="font-size:32px;">&#128295;</span>
+                        RETIREI EU
+                    </button>
+                    <button onclick="responderConfirmarRetirada('DEVOLVER', '${avisoId}', '${codigo}')"
+                        style="width:180px; height:120px; background:#001a4d; border:2px solid #0056b3;
+                               border-radius:14px; color:#4d9fff; font-size:18px; font-weight:bold;
+                               cursor:pointer; display:flex; flex-direction:column; align-items:center;
+                               justify-content:center; gap:8px; transition:all 0.2s;"
+                        onmouseover="this.style.background='#0056b3';this.style.color='white'"
+                        onmouseout="this.style.background='#001a4d';this.style.color='#4d9fff'">
+                        <span style="font-size:32px;">&#128230;</span>
+                        VOU DEVOLVER
+                    </button>
+                </div>
+
+            </div>
+        `;
+
+        // Bloqueia fechar com ESC ou clique fora
+        modal.addEventListener('click', (e) => { if (e.target === modal) e.stopPropagation(); });
+        document.addEventListener('keydown', bloquearEsc);
+        document.body.appendChild(modal);
+    }
+
+    function bloquearEsc(e) {
+        if (e.key === 'Escape') e.preventDefault();
+    }
+
+    async function responderConfirmarRetirada(acao, avisoId, codigo) {
+        // Marca aviso como lido
+        try { await fetch(`${API_URL}/avisos/${avisoId}/lido`, { method: 'POST' }); } catch(e) {}
+
+        // Remove listener de ESC e fecha modal
+        document.removeEventListener('keydown', bloquearEsc);
+        document.getElementById('modalConfirmarRetirada')?.remove();
+        // Mantém modalConfirmarAberto = true para bloquear o polling enquanto estiver na tela de scan
+        // Só é liberado quando o operador sair da tela de scan (mostrarOperador)
+
+        // Executa a ação escolhida
+        if (acao === 'RETIRAR') {
+            scan('RETIRAR');
+        } else {
+            scan('DEVOLVER');
+        }
+    }
+
+    let oficinaPollInterval = null;
+
+    // Polling da oficina — verifica alertas de retirada sem registro a cada 10 segundos
+    function iniciarPollingOficina() {
+        if (oficinaPollInterval) clearInterval(oficinaPollInterval);
+        verificarAlertasOficina();
+        oficinaPollInterval = setInterval(verificarAlertasOficina, 10000);
+    }
+
+    function pararPollingOficina() {
+        if (oficinaPollInterval) clearInterval(oficinaPollInterval);
+        oficinaPollInterval = null;
+    }
+
+    async function verificarAlertasOficina() {
+        try {
+            const res = await fetch(`${API_URL}/ferramentas`);
+            if (!res.ok) return;
+            const ferramentas = await res.json();
+            const alertas = ferramentas.filter(f =>
+                (f.status || f.Status || '').toUpperCase() === 'AUSENTE_SEM_REGISTRO'
+            );
+            const bell = document.getElementById('bellOficina');
+            if (!bell) return;
+            if (alertas.length > 0) {
+                bell.innerHTML = `&#128276;<span style="position:absolute;top:2px;right:2px;width:10px;height:10px;background:red;border-radius:50%;box-shadow:0 0 6px red;display:block;"></span>`;
+                bell.title = alertas.length + ' alerta(s) de retirada sem registro';
+            } else {
+                bell.innerHTML = `&#128276;`;
+                bell.title = 'Sem alertas';
+            }
+        } catch(e) {}
+    }
+
+    async function abrirNotificacoesOficina() {
+        let ferramentas = [];
+        try {
+            const res = await fetch(`${API_URL}/ferramentas`);
+            if (res.ok) ferramentas = await res.json();
+        } catch(e) {}
+
+        let avisosSemRegistro = [];
+        try {
+            const resAvisos = await fetch(`${API_URL}/avisos/${encodeURIComponent(currentUserId)}`);
+            if (resAvisos.ok) {
+                const todos = await resAvisos.json();
+                avisosSemRegistro = (todos || []).filter(a =>
+                    (a.mensagem || a.Mensagem || '').startsWith('RETIRADA_SEM_REGISTRO')
+                );
+            }
+        } catch(e) {}
+
+        if (avisosSemRegistro.length === 0) {
+            _abrirModal(
+                '<div style="text-align:center;font-size:32px;margin-bottom:12px;">&#x2705;</div>'
+                + '<h2 style="color:#00cc00;margin:0 0 8px 0;font-size:16px;text-align:center;">Tudo certo na oficina</h2>'
+                + '<p style="color:#666;font-size:13px;text-align:center;margin:0 0 16px 0;">Nenhuma ferramenta retirada sem registro.</p>'
+                + '<button onclick="_fecharModal()" style="width:100%;background:#222;color:#aaa;border:1px solid #333;padding:12px;border-radius:8px;cursor:pointer;font-weight:bold;">FECHAR</button>'
+            );
+            return;
+        }
+
+        const cards = avisosSemRegistro.map(a => {
+            const partes       = (a.mensagem || a.Mensagem || '').split('|');
+            const codigo       = partes[1] || '-';
+            const desc         = partes[2] || 'Ferramenta desconhecida';
+            const operadorId   = partes[3] || '';
+            const operadorNome = partes[4] || 'DESCONHECIDO';
+            const avisoId      = a.id || a.Id;
+            const rawData      = a.criadoEm || a.CriadoEm;
+            const hora         = rawData ? new Date(rawData).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) : '';
+            const ferrAtual    = ferramentas.find(f =>
+                (f.codigoBarras||f.CodigoBarras) === codigo ||
+                ('TSEA-'+String(f.id||f.Id).padStart(3,'0')) === codigo
+            );
+            const jaDevolvida = ferrAtual && (ferrAtual.status||ferrAtual.Status||'').toUpperCase() === 'DISPONIVEL';
+            const corBorda = jaDevolvida ? '#333' : '#ff3333';
+            const corBg    = jaDevolvida ? '#111' : '#1a0000';
+            const opa      = jaDevolvida ? '0.65' : '1';
+
+            let btnHtml = '';
+            if (!jaDevolvida && operadorId) {
+                const safeId   = operadorId.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+                const safeDesc = desc.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+                const safeCod  = codigo.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+                btnHtml = '<button onclick="enviarAvisoSemRegistroOficina(\''
+                    + avisoId + "','" + safeId + "','" + safeDesc + "','" + safeCod + "', this)\""
+                    + ' style="width:100%;background:#b30000;color:white;border:none;padding:9px;'
+                    + 'border-radius:6px;cursor:pointer;font-size:12px;font-weight:bold;">'
+                    + '&#128232; ENVIAR AVISO AO FUNCIONARIO</button>';
+            } else if (jaDevolvida) {
+                btnHtml = '<div style="text-align:center;color:#555;font-size:11px;padding:4px;">&#10003; Ferramenta ja devolvida</div>';
+            } else {
+                btnHtml = '<div style="text-align:center;color:#555;font-size:11px;padding:4px;">&#9888; Operador nao identificado na sessao</div>';
+            }
+
+            return '<div style="background:' + corBg + ';border:1px solid ' + corBorda
+                + ';border-left:4px solid ' + corBorda + ';border-radius:8px;padding:14px 16px;margin-bottom:10px;opacity:' + opa + ';">'
+                + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+                + '<span style="font-size:10px;color:#ff4444;font-weight:bold;letter-spacing:1px;">'
+                + '&#128680; RETIRADA SEM REGISTRO' + (jaDevolvida ? ' &mdash; JA DEVOLVIDA' : '') + '</span>'
+                + (hora ? '<span style="font-size:10px;color:#555;">' + hora + '</span>' : '')
+                + '</div>'
+                + '<div style="color:white;font-size:14px;font-weight:bold;margin-bottom:2px;">' + desc.toUpperCase() + '</div>'
+                + '<div style="color:#ff8888;font-family:monospace;font-size:12px;margin-bottom:10px;">' + codigo + '</div>'
+                + '<div style="background:#0d0000;border:1px solid #440000;border-radius:6px;padding:10px 12px;margin-bottom:10px;">'
+                + '<div style="font-size:10px;color:#ff6666;font-weight:bold;letter-spacing:1px;margin-bottom:5px;">&#128100; OPERADOR NA SESSAO</div>'
+                + '<div style="display:flex;align-items:center;gap:10px;">'
+                + '<div style="background:#330000;border:1px solid #660000;border-radius:4px;padding:4px 10px;font-family:monospace;font-size:13px;color:#ffaaaa;font-weight:bold;">'
+                + (operadorId || 'NAO IDENTIFICADO') + '</div>'
+                + '<div style="color:#ddd;font-size:13px;">' + operadorNome.toUpperCase() + '</div>'
+                + '</div></div>'
+                + btnHtml
+                + '</div>';
+        }).join('');
+
+        _abrirModal(
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">'
+            + '<div><h2 style="color:#e60000;margin:0;font-size:16px;">&#128276; Alertas da Oficina</h2>'
+            + '<small style="color:#666;font-size:11px;">' + avisosSemRegistro.length + ' ocorrencia(s)</small></div>'
+            + '<button onclick="_fecharModal()" style="background:none;border:none;color:#666;font-size:22px;cursor:pointer;">&times;</button>'
+            + '</div>'
+            + '<div style="overflow-y:auto;max-height:62vh;padding-right:4px;">' + cards + '</div>'
+        );
+    }
+
+    async function enviarAvisoSemRegistroOficina(avisoId, operadorId, desc, codigo, btn) {
+        btn.disabled = true;
+        btn.textContent = 'Enviando...';
+        try {
+            let ferramentaId = 0;
+            try {
+                const resF = await fetch(`${API_URL}/ferramentas`);
+                if (resF.ok) {
+                    const todas = await resF.json();
+                    const f = todas.find(x =>
+                        (x.codigoBarras||x.CodigoBarras) === codigo ||
+                        ('TSEA-'+String(x.id||x.Id).padStart(3,'0')) === codigo
+                    );
+                    if (f) ferramentaId = f.id || f.Id;
+                }
+            } catch(e) {}
+
+            const res = await fetch(`${API_URL}/avisos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    FerramentaId: ferramentaId,
+                    UsuarioId: operadorId,
+                    Mensagem: 'ATENCAO: Voce foi identificado como a ultima pessoa na sessao quando a ferramenta '
+                        + desc + ' (' + codigo + ') foi retirada sem registro no armario. Favor regularizar imediatamente.'
+                })
+            });
+
+            if (res.ok) {
+                await fetch(`${API_URL}/avisos/${avisoId}/lido`, { method: 'POST' });
+                btn.style.background = '#004400';
+                btn.style.color = '#00cc44';
+                btn.textContent = '&#10003; Aviso enviado com sucesso!';
+                setTimeout(() => { _fecharModal(); verificarAlertasOficina(); }, 1500);
+            } else {
+                btn.disabled = false;
+                btn.textContent = '&#128232; ENVIAR AVISO AO FUNCIONARIO';
+                alert('Erro ao enviar aviso.');
+            }
+        } catch(e) {
+            btn.disabled = false;
+            btn.textContent = '&#128232; ENVIAR AVISO AO FUNCIONARIO';
+            alert('Erro de conexao.');
+        }
+    }
+
 
     // Polling do admin — verifica ferramentas atrasadas a cada 15 segundos
     function iniciarPollingAdmin() {
@@ -239,6 +572,80 @@
         adminPollInterval = null;
     }
 
+    // --- POLLING SENSOR MAGNÉTICO (PORTA) ---
+    function iniciarPollingPorta() {
+        if (portaPollInterval) clearInterval(portaPollInterval);
+        atualizarIndicadorPorta(); // imediato
+        portaPollInterval = setInterval(atualizarIndicadorPorta, 3000);
+    }
+
+    function pararPollingPorta() {
+        if (portaPollInterval) clearInterval(portaPollInterval);
+        portaPollInterval = null;
+        const el = document.getElementById('indicadorPorta');
+        if (el) el.style.display = 'none';
+    }
+
+    async function atualizarIndicadorPorta() {
+        const el = document.getElementById('indicadorPorta');
+        if (!el) return;
+        try {
+            const res = await fetch(`${API_URL}/status/porta`);
+            if (!res.ok) return;
+            const data = await res.json();
+            const status = data.status || 'DESCONHECIDO';
+            const alarme = data.alarmeSemLogin || false;
+
+            el.className = '';
+            if (alarme || status === 'ALERTA_SEM_LOGIN') {
+                el.className = 'porta-alerta';
+                el.innerHTML = '<span class="porta-dot"></span>⚠ PORTA ABERTA SEM LOGIN';
+                if (!portaAlertaAtivo) {
+                    portaAlertaAtivo = true;
+                    mostrarToastPorta('⚠ ALERTA: Porta aberta sem login ativo!', '#ff4444');
+                }
+            } else if (status === 'FECHADA') {
+                el.className = 'porta-fechada';
+                el.innerHTML = '<span class="porta-dot"></span>🔒 PORTA FECHADA';
+                portaAlertaAtivo = false;
+            } else if (status === 'ABERTA') {
+                el.className = 'porta-aberta';
+                el.innerHTML = '<span class="porta-dot"></span>🔓 PORTA ABERTA';
+                portaAlertaAtivo = false;
+            } else {
+                el.className = 'porta-desconhecida';
+                el.innerHTML = '<span class="porta-dot"></span>PORTA —';
+            }
+        } catch(e) {
+            // sem conexão - ignora silencioso
+        }
+    }
+
+    async function silenciarAlertaPorta() {
+        try {
+            await fetch(`${API_URL}/status/porta/silenciar`, { method: 'POST' });
+            portaAlertaAtivo = false;
+            atualizarIndicadorPorta();
+        } catch(e) {}
+    }
+
+    function mostrarToastPorta(msg, cor) {
+        let toast = document.getElementById('toastPorta');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'toastPorta';
+            toast.style.cssText = `position:fixed;bottom:30px;left:50%;transform:translateX(-50%);
+                background:#1a0000;border:1px solid ${cor};color:${cor};padding:12px 24px;
+                border-radius:8px;font-weight:bold;font-size:13px;z-index:9999;
+                box-shadow:0 0 20px rgba(255,50,50,0.4);cursor:pointer;`;
+            toast.onclick = silenciarAlertaPorta;
+            document.body.appendChild(toast);
+        }
+        toast.textContent = msg + ' (clique para silenciar)';
+        toast.style.display = 'block';
+        setTimeout(() => { if (toast) toast.style.display = 'none'; }, 8000);
+    }
+
     async function verificarNotificacoesAdmin() {
         // Só roda se o admin estiver logado
         if (!currentUser || !currentUserId) return;
@@ -246,15 +653,28 @@
             const res = await fetch(`${API_URL}/ferramentas`);
             if (!res.ok) return;
             const ferramentas = await res.json();
-            const temAtrasado = ferramentas.some(f => {
-                const status = (f.status || f.Status || '').toUpperCase();
-                return status === 'ATRASADO' || status === 'EM_USO';
-            });
-            // Verifica se há movimentações abertas (EM_USO) há mais de X tempo
             const temEmUso = ferramentas.some(f => {
                 return (f.status || f.Status || '').toUpperCase() === 'EM_USO';
             });
-            atualizarBellBadge(notificacaoAtiva || temEmUso);
+            const temAusenteIrregular = ferramentas.some(f => {
+                return (f.status || f.Status || '').toUpperCase() === 'AUSENTE_SEM_REGISTRO';
+            });
+
+            // Verifica também avisos pendentes de retirada sem registro
+            let temAlertaSemRegistro = temAusenteIrregular;
+            if (!temAlertaSemRegistro) {
+                try {
+                    const resAvisos = await fetch(`${API_URL}/avisos/${encodeURIComponent(currentUserId)}`);
+                    if (resAvisos.ok) {
+                        const avisos = await resAvisos.json();
+                        temAlertaSemRegistro = (avisos || []).some(a =>
+                            (a.mensagem || a.Mensagem || '').startsWith('RETIRADA_SEM_REGISTRO')
+                        );
+                    }
+                } catch(e) {}
+            }
+
+            atualizarBellBadge(notificacaoAtiva || temEmUso || temAlertaSemRegistro);
         } catch (err) {
             // silencioso — não interrompe o fluxo
         }
@@ -374,16 +794,30 @@ function _fecharModal() {
     modal.style.display = '';
 }
 
-function abrirNotificacaoAtraso() {
+async function abrirNotificacaoAtraso() {
     const ferramentasAtrasadas = ativosBackup.filter(f => {
         const status = ((f.status || f.Status || '').toString().toUpperCase());
         return status === 'EM_USO' || status === 'ATRASADO';
     });
 
-    if (ferramentasAtrasadas.length === 0) {
+    // Busca alertas de retirada sem registro para este admin
+    let alertasSemRegistro = [];
+    try {
+        const res = await fetch(`${API_URL}/avisos/${encodeURIComponent(currentUserId)}`);
+        if (res.ok) {
+            const todos = await res.json();
+            alertasSemRegistro = (todos || []).filter(a =>
+                (a.mensagem || a.Mensagem || '').startsWith('RETIRADA_SEM_REGISTRO')
+            );
+        }
+    } catch(e) {}
+
+    const totalPendencias = ferramentasAtrasadas.length + alertasSemRegistro.length;
+
+    if (totalPendencias === 0) {
         _abrirModal(
             '<h2 style="color:#00cc00; margin-top:0; font-size:16px;">✅ Sem pendências</h2>'
-            + '<p style="color:#aaa; font-size:14px;">Nenhuma ferramenta em atraso ou em uso no momento.</p>'
+            + '<p style="color:#aaa; font-size:14px;">Nenhuma ferramenta em atraso, em uso ou retirada irregularmente.</p>'
             + '<button onclick="_fecharModal()" style="width:100%; background:#333; color:white; border:none; padding:12px; border-radius:8px; cursor:pointer; margin-top:10px; font-weight:bold;">FECHAR</button>'
         );
         return;
@@ -391,6 +825,27 @@ function abrirNotificacaoAtraso() {
 
     window._ferramentasParaAviso = ferramentasAtrasadas;
 
+    // Cards de alertas de retirada sem registro (aparecem primeiro, mais urgentes)
+    const cardsSemRegistro = alertasSemRegistro.map(a => {
+        const partes  = (a.mensagem || a.Mensagem || '').split('|');
+        const codigo  = partes[1] || '—';
+        const desc    = partes[2] || 'Ferramenta desconhecida';
+        const avisoId = a.id || a.Id;
+        return '<div style="background:#1a0000; border:1px solid #ff3333; border-left:4px solid #ff3333; border-radius:8px; padding:14px 16px; margin-bottom:10px; animation: portaAlertaPulse 1.5s ease-in-out infinite;">'
+            + '<div style="display:flex; justify-content:space-between; align-items:flex-start;">'
+            + '<div>'
+            + '<div style="font-size:10px; color:#ff4444; font-weight:bold; letter-spacing:1px; margin-bottom:6px;">🚨 RETIRADA SEM REGISTRO</div>'
+            + '<div style="color:white; font-size:14px; font-weight:bold; margin-bottom:2px;">' + desc.toUpperCase() + '</div>'
+            + '<div style="color:#ff8888; font-family:monospace; font-size:12px; margin-bottom:8px;">' + codigo + '</div>'
+            + '<div style="color:#aaa; font-size:12px;">A ferramenta saiu do armário sem nenhum funcionário bipar no sistema.</div>'
+            + '</div>'
+            + '</div>'
+            + '<button onclick="silenciarAlertaSemRegistro(' + avisoId + ', this)" '
+            + 'style="width:100%; margin-top:12px; background:#330000; color:#ff6666; border:1px solid #ff3333; padding:8px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold;">CIENTE — MARCAR COMO VISTO</button>'
+            + '</div>';
+    }).join('');
+
+    // Cards normais de ferramentas em uso/atraso
     const cards = ferramentasAtrasadas.map(f => {
         const colaborador = (f.colaborador || f.Colaborador || 'Operador desconhecido').toUpperCase();
         const desc        = (f.descricao || f.Descricao || 'Ferramenta').toUpperCase();
@@ -407,15 +862,35 @@ function abrirNotificacaoAtraso() {
             + '</div>';
     }).join('');
 
+    const tituloAlertas = alertasSemRegistro.length > 0
+        ? '<div style="font-size:10px; color:#ff4444; font-weight:bold; letter-spacing:2px; margin-bottom:8px; margin-top:4px;">⚠ RETIRADAS IRREGULARES</div>'
+        : '';
+    const tituloEmUso = ferramentasAtrasadas.length > 0
+        ? '<div style="font-size:10px; color:#ffaa00; font-weight:bold; letter-spacing:2px; margin:12px 0 8px 0;">🔔 EM USO / ATRASADAS</div>'
+        : '';
+
     _abrirModal(
         '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">'
-        + '<div><h2 style="color:#e60000; margin:0; font-size:16px;">🔔 Ferramentas em Uso</h2>'
-        + '<small style="color:#666; font-size:11px;">' + ferramentasAtrasadas.length + ' pessoa(s) com ferramenta</small></div>'
+        + '<div><h2 style="color:#e60000; margin:0; font-size:16px;">Notificações</h2>'
+        + '<small style="color:#666; font-size:11px;">' + totalPendencias + ' pendência(s)</small></div>'
         + '<button onclick="_fecharModal()" style="background:none; border:none; color:#666; font-size:22px; cursor:pointer; line-height:1;">×</button>'
         + '</div>'
-        + '<div style="overflow-y:auto; max-height:55vh; padding-right:4px; margin-bottom:14px;">' + cards + '</div>'
-        + '<button onclick="enviarAvisoAdminTodos()" style="width:100%; background:#e60000; color:white; border:none; padding:14px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:15px; letter-spacing:1px;">ENVIAR AVISO</button>'
+        + '<div style="overflow-y:auto; max-height:55vh; padding-right:4px; margin-bottom:14px;">'
+        + tituloAlertas + cardsSemRegistro
+        + tituloEmUso + cards
+        + '</div>'
+        + (ferramentasAtrasadas.length > 0
+            ? '<button onclick="enviarAvisoAdminTodos()" style="width:100%; background:#e60000; color:white; border:none; padding:14px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:15px; letter-spacing:1px;">ENVIAR AVISO AOS FUNCIONÁRIOS</button>'
+            : '')
     );
+}
+
+async function silenciarAlertaSemRegistro(avisoId, btn) {
+    try {
+        await fetch(`${API_URL}/avisos/${avisoId}/lido`, { method: 'POST' });
+        const card = btn.closest('div[style*="background:#1a0000"]');
+        if (card) card.remove();
+    } catch(e) {}
 }
 
 function mostrarNotificacaoAtraso(ferramenta) {
@@ -1353,6 +1828,11 @@ async function fazerLogout(motivo = "VOLUNTARIO") {
     usuarioLogado = null;
     clearInterval(timerInterval);
     pararPollingAdmin();
+    pararPollingPorta();
+    pararPollingAvisoOperador();
+    modalConfirmarAberto = false;
+    document.getElementById('modalConfirmarRetirada')?.remove();
+    document.removeEventListener('keydown', bloquearEsc);
     localStorage.removeItem("usuarioId");
     localStorage.removeItem("setorUsuario");
 
@@ -1490,7 +1970,9 @@ async function carregarDadosDashboard() {
 }
 
 async function mostrarAdmin(filtroSetor = 'GERAL') {
+    pararPollingOficina(); // para polling da oficina ao sair dela
     iniciarPollingAdmin(); // inicia verificação periódica de notificações
+    iniciarPollingPorta(); // inicia monitoramento do sensor magnético
     const res = await fetch(`${API_URL}/ferramentas`);
     const dadosResposta = res.ok ? await res.json() : await res.text();
     const dados = Array.isArray(dadosResposta) ? dadosResposta : [];
@@ -1538,6 +2020,7 @@ async function mostrarAdmin(filtroSetor = 'GERAL') {
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()"> ALMOXARIFADO</div>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarInventario()"> INVENTÁRIO</div>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()"> RELATÓRIOS</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarGerenciarAcesso()"> GERENCIAR ACESSO</div>
                     </nav>
                     <div style="border-top: 1px solid #333; margin-top: 20px; padding-top: 15px;">
                         <button onclick="limparColaboradoresInvalidos()" style="width: 100%; background: #333; color: #aaa; border: 1px solid #555; padding: 10px; cursor: pointer; border-radius: 5px; font-size: 12px; margin-bottom: 10px;">
@@ -1562,6 +2045,9 @@ async function mostrarAdmin(filtroSetor = 'GERAL') {
                     <button id="bellButton" class="bell-btn" onclick="abrirNotificacaoAtraso()" title="Notificações" style="position:relative; font-size:22px;">
                         &#128276;${temAtraso ? '<span class="alert-dot" style="position:absolute;top:2px;right:2px;width:10px;height:10px;background:red;border-radius:50%;box-shadow:0 0 6px red;"></span>' : ''}
                     </button>
+                    <div id="indicadorPorta" class="porta-desconhecida" title="Estado da porta do armário (Sensor Magnético - Pino 13)">
+                        <span class="porta-dot"></span>PORTA —
+                    </div>
                 </div>
 
                 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px;">
@@ -1630,6 +2116,7 @@ async function mostrarOficina() {
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()"> ALMOXARIFADO</div>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarInventario()"> INVENTÁRIO</div>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()"> RELATÓRIOS</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarGerenciarAcesso()"> GERENCIAR ACESSO</div>
                     </nav>
                 </div>
                 <div style="border-top: 1px solid #222; padding-top: 20px;">
@@ -1641,9 +2128,16 @@ async function mostrarOficina() {
             <div style="flex: 1; padding: 30px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
                     <h1 style="color: white; margin: 0;"> Gestão de Oficina</h1>
-                    <button onclick="abrirModalNovaFerramenta()" style="background: #e60000; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">
-                      Nova Ferramenta
-                   </button>
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <button id="bellOficina" onclick="abrirNotificacoesOficina()"
+                            title="Alertas da oficina"
+                            style="background:none; border:none; font-size:22px; cursor:pointer; position:relative; color:white; display:inline-flex; align-items:center; padding:6px;">
+                            &#128276;
+                        </button>
+                        <button onclick="abrirModalNovaFerramenta()" style="background: #e60000; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">
+                          Nova Ferramenta
+                        </button>
+                    </div>
                 </div>
 
                 <div style="background: #111; padding: 15px; border-radius: 12px; border: 1px solid #e60000; margin-bottom: 20px; display: flex; align-items: center; gap: 15px;">
@@ -1672,6 +2166,7 @@ async function mostrarOficina() {
     `;
 
     renderizarTabelaOficina(ferramentas);
+    iniciarPollingOficina();
 
     
     const buscaOfEl = document.getElementById('buscaCodigoBarras');
@@ -2089,6 +2584,7 @@ async function mostrarAlmoxerifado() {
                         <div class="menu-item active" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()"> ALMOXARIFADO</div>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarInventario()"> INVENTÁRIO</div>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()"> RELATÓRIOS</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarGerenciarAcesso()"> GERENCIAR ACESSO</div>
                     </nav>
                 </div>
             </div>
@@ -2258,6 +2754,7 @@ function mostrarOperador() {
             </div>
         </div>`;
     carregarAvisosOperador();
+    iniciarPollingAvisoOperador();
 }
     
 function mostrarLogin() {
@@ -2371,6 +2868,7 @@ function mostrarLogin() {
     if (passwordInput) passwordInput.addEventListener('keydown', loginOnEnter);
 }
     function mostrarOperador() {
+        modalConfirmarAberto = false; // libera polling de aviso ao voltar para tela principal
         document.getElementById('app').innerHTML = `
             <div class="header" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
                 <div style="display:flex; align-items:center; gap:10px;">
@@ -2381,7 +2879,7 @@ function mostrarLogin() {
                     <button id="bellButton" class="bell-btn" onclick="abrirNotificacaoAtrasoOperador()" title="Notificações" style="position:relative; font-size:22px;">
                         &#128276;
                     </button>
-                    <button class="btn-logout" onclick="mostrarLogin()">SAIR</button>
+                    <button class="btn-logout" onclick="fazerLogout()">SAIR</button>
                 </div>
             </div>
             <div class="container-center">
@@ -2391,6 +2889,7 @@ function mostrarLogin() {
                 </div>
             </div>`;
         carregarAvisosOperador();
+        iniciarPollingAvisoOperador();
     }
 
     async function carregarAvisosOperador() {
@@ -2537,6 +3036,7 @@ async function mostrarInventario() {
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()"> ALMOXARIFADO</div>
                         <div class="menu-item active" style="cursor:pointer; padding:10px; color:white; background:#111;" onclick="mostrarInventario()"> INVENTÁRIO</div>
                         <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()"> RELATÓRIOS</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarGerenciarAcesso()"> GERENCIAR ACESSO</div>
                     </nav>
                 </div>
                 <div style="border-top:1px solid #222; padding-top:20px;">
@@ -2721,7 +3221,7 @@ function abrirInventarioSetor(setor) {
                 <span>TSEA Energia – Sistema de Controle de Ferramentas</span>
                 <span>Responsável: __________________________ &nbsp;&nbsp; Data: __________</span>
             </div>
-            </body></html>`;
+            <\/body><\/html>`;
 
             const janela = window.open('', '_blank');
             janela.document.write(html);
@@ -2799,7 +3299,7 @@ function imprimirInventarioTodos() {
                 <button onclick="window.print()" style="background:#e60000; color:white; border:none; padding:12px 24px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;"> IMPRIMIR</button>
             </div>
             ${blocos}
-            </body></html>`;
+            <\/body><\/html>`;
 
             const janela = window.open('', '_blank');
             janela.document.write(html);
@@ -2929,6 +3429,261 @@ async function gerarRelatorioXLSX() {
     }
 }
 
+
+
+
+// ===== GERENCIAR ACESSO =====
+async function mostrarGerenciarAcesso() {
+    let usuarios = [];
+    try {
+        const res = await fetch(`${API_URL}/usuarios/todos`);
+        if (res.ok) usuarios = await res.json();
+    } catch(e) { console.error("Erro ao buscar usuários", e); }
+
+    function renderTabela(lista) {
+        const tbody = document.getElementById('tabelaAcessoCorpo');
+        if (!tbody) return;
+        if (!lista || lista.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:#555;">Nenhum usuário encontrado.</td></tr>`;
+            return;
+        }
+        tbody.innerHTML = lista.map(u => {
+            const ativo = (u.status || u.Status || '').toUpperCase() === 'ATIVO';
+            const setor = (u.setor || u.Setor || '').toUpperCase();
+            const nome  = (u.nome  || u.Nome  || '').toUpperCase();
+            const cracha = u.codigoBarras || u.CodigoBarras || '';
+            const id = u.id || u.Id;
+            return `
+            <tr style="border-bottom:1px solid #1a1a1a;">
+                <td style="padding:14px 15px; color:white; font-weight:bold;">${nome}</td>
+                <td style="color:#aaa; font-family:monospace;">${cracha}</td>
+                <td>
+                    <span style="background:${setor==='ADMIN'?'#1a0000':'#001a1a'}; color:${setor==='ADMIN'?'#ff4444':'#00ccff'}; padding:3px 10px; border-radius:4px; font-size:11px; font-weight:bold;">
+                        ${setor}
+                    </span>
+                </td>
+                <td>
+                    <span style="background:${ativo?'#003300':'#1a1a1a'}; color:${ativo?'#00ff00':'#ff4444'}; border:1px solid ${ativo?'#00ff00':'#ff4444'}; padding:3px 10px; border-radius:4px; font-size:11px; font-weight:bold;">
+                        ${ativo ? 'ATIVO' : 'INATIVO'}
+                    </span>
+                </td>
+                <td style="text-align:center;">
+                    <button onclick="abrirModalEditarUsuario(${id}, '${nome}', '${cracha}', '${setor}', '${ativo?'ATIVO':'INATIVO'}')"
+                        style="background:none; border:1px solid #444; color:#aaa; padding:6px 14px; border-radius:5px; cursor:pointer; font-size:12px; margin-right:6px;">
+                         Editar
+                    </button>
+                    <button onclick="alterarStatusUsuario(${id}, '${ativo?'INATIVO':'ATIVO'}')"
+                        style="background:none; border:1px solid ${ativo?'#ff4444':'#00cc44'}; color:${ativo?'#ff4444':'#00cc44'}; padding:6px 14px; border-radius:5px; cursor:pointer; font-size:12px;">
+                        ${ativo ? ' Desativar' : ' Ativar'}
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    document.getElementById('app').innerHTML = `
+        <div style="display:flex; min-height:100vh; background:#080808;">
+            <div style="width:260px; background:#000; border-right:1px solid #222; padding:20px; display:flex; flex-direction:column; justify-content:space-between; position:sticky; top:0; height:100vh;">
+                <div>
+                    <h2 style="color:white; margin-bottom:30px;">TSEA <span style="color:red;">ENERGIA</span></h2>
+                    <nav>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAdmin()"> DASHBOARD</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarOficina()"> OFICINA</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarAlmoxerifado()"> ALMOXARIFADO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="mostrarInventario()"> INVENTÁRIO</div>
+                        <div class="menu-item" style="cursor:pointer; padding:10px; color:white;" onclick="abrirModalRelatorio()"> RELATÓRIOS</div>
+                        <div class="menu-item active" style="cursor:pointer; padding:10px; color:white; background:#111;" onclick="mostrarGerenciarAcesso()"> GERENCIAR ACESSO</div>
+                    </nav>
+                </div>
+                <div style="border-top:1px solid #222; padding-top:20px;">
+                    <div style="color:#aaa; font-size:14px; margin-bottom:10px;"> ${usuarioLogado ? usuarioLogado.nome : 'Administrador'}</div>
+                    <button onclick="fazerLogout()" style="width:100%; background:#c00; color:white; border:none; padding:12px; cursor:pointer; border-radius:5px; font-weight:bold;">SAIR DA CONTA</button>
+                </div>
+            </div>
+
+            <div style="flex:1; padding:30px; overflow-y:auto;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+                    <div>
+                        <h1 style="color:white; margin:0 0 4px 0;"> Gerenciar <span style="color:#e60000;">Acesso</span></h1>
+                        <p style="color:#555; margin:0; font-size:13px;">Ative, desative ou edite os dados dos funcionários cadastrados.</p>
+                    </div>
+                </div>
+
+                <div style="background:#111; padding:12px 16px; border-radius:8px; border:1px solid #222; margin-bottom:20px; display:flex; align-items:center; gap:12px;">
+                    <span style="color:#555;"></span>
+                    <input type="text" id="buscaAcesso" placeholder="Buscar por nome ou crachá..."
+                        style="flex:1; background:transparent; border:none; color:white; font-size:15px; outline:none;"
+                        oninput="filtrarAcesso(this.value)">
+                    <div style="display:flex; gap:8px;">
+                        <button onclick="filtrarStatusAcesso('TODOS')" id="btnTodos"
+                            style="background:#e60000; color:white; border:none; padding:7px 16px; border-radius:5px; cursor:pointer; font-size:12px; font-weight:bold;">TODOS</button>
+                        <button onclick="filtrarStatusAcesso('ATIVO')" id="btnAtivos"
+                            style="background:#222; color:#aaa; border:1px solid #333; padding:7px 16px; border-radius:5px; cursor:pointer; font-size:12px;">ATIVOS</button>
+                        <button onclick="filtrarStatusAcesso('INATIVO')" id="btnInativos"
+                            style="background:#222; color:#aaa; border:1px solid #333; padding:7px 16px; border-radius:5px; cursor:pointer; font-size:12px;">INATIVOS</button>
+                    </div>
+                </div>
+
+                <div style="background:#111; border-radius:10px; border:1px solid #222; overflow:hidden;">
+                    <table style="width:100%; border-collapse:collapse; color:white;">
+                        <thead>
+                            <tr style="background:#1a1a1a; color:#666; font-size:12px; text-align:left;">
+                                <th style="padding:14px 15px;">NOME</th>
+                                <th style="padding:14px;">CRACHÁ</th>
+                                <th style="padding:14px;">TIPO</th>
+                                <th style="padding:14px;">STATUS</th>
+                                <th style="padding:14px; text-align:center;">AÇÕES</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabelaAcessoCorpo"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+
+    window._usuariosAcesso = usuarios;
+    window._filtroStatusAcesso = 'TODOS';
+    renderTabela(usuarios);
+    window._renderTabelaAcesso = renderTabela;
+}
+
+function filtrarAcesso(termo) {
+    const busca = termo.toUpperCase().trim();
+    let lista = window._usuariosAcesso || [];
+    if (window._filtroStatusAcesso && window._filtroStatusAcesso !== 'TODOS') {
+        lista = lista.filter(u => (u.status||u.Status||'').toUpperCase() === window._filtroStatusAcesso);
+    }
+    if (busca) {
+        lista = lista.filter(u => {
+            const nome   = (u.nome  || u.Nome  || '').toUpperCase();
+            const cracha = (u.codigoBarras || u.CodigoBarras || '').toUpperCase();
+            return nome.includes(busca) || cracha.includes(busca);
+        });
+    }
+    window._renderTabelaAcesso && window._renderTabelaAcesso(lista);
+}
+
+function filtrarStatusAcesso(status) {
+    window._filtroStatusAcesso = status;
+    const btns = { TODOS:'btnTodos', ATIVO:'btnAtivos', INATIVO:'btnInativos' };
+    Object.entries(btns).forEach(([k, id]) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        if (k === status) {
+            btn.style.background = '#e60000'; btn.style.color = 'white'; btn.style.border = 'none';
+        } else {
+            btn.style.background = '#222'; btn.style.color = '#aaa'; btn.style.border = '1px solid #333';
+        }
+    });
+    const busca = document.getElementById('buscaAcesso')?.value || '';
+    filtrarAcesso(busca);
+}
+
+async function alterarStatusUsuario(id, novoStatus) {
+    const acao = novoStatus === 'INATIVO' ? 'desativar' : 'ativar';
+    if (!confirm(`Deseja ${acao} este funcionário?`)) return;
+    try {
+        const res = await fetch(`${API_URL}/usuarios/${id}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: novoStatus })
+        });
+        if (res.ok) {
+            // Atualiza a lista local e re-renderiza
+            const u = window._usuariosAcesso.find(x => (x.id||x.Id) == id);
+            if (u) u.status = novoStatus;
+            filtrarAcesso(document.getElementById('buscaAcesso')?.value || '');
+        } else {
+            const t = await res.text();
+            alert('Erro: ' + t);
+        }
+    } catch(e) { alert('Erro de conexão.'); }
+}
+
+function abrirModalEditarUsuario(id, nome, cracha, setor, status) {
+    const jaExiste = document.getElementById('modalEditarUsuario');
+    if (jaExiste) jaExiste.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'modalEditarUsuario';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.88);z-index:4000;display:flex;justify-content:center;align-items:center;';
+    modal.innerHTML = `
+        <div style="background:#111; border:1px solid #333; border-radius:14px; padding:32px; width:420px; color:white; position:relative;">
+            <h2 style="margin:0 0 6px 0;">Editar <span style="color:#e60000;">Funcionário</span></h2>
+            <p style="color:#555; font-size:13px; margin:0 0 24px 0;">Crachá: <span style="color:#aaa; font-family:monospace;">${cracha}</span> &nbsp;|&nbsp; Tipo: <span style="color:#aaa;">${setor}</span></p>
+
+            <label style="display:block; color:#aaa; font-size:12px; margin-bottom:6px; text-transform:uppercase; letter-spacing:1px;">Nome do Funcionário</label>
+            <input type="text" id="editNome" value="${nome}"
+                style="width:100%; background:#000; border:1px solid #444; color:white; padding:12px; border-radius:6px; font-size:15px; margin-bottom:24px; box-sizing:border-box;"
+                placeholder="Nome completo">
+
+            <label style="display:block; color:#aaa; font-size:12px; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">Status</label>
+            <div style="display:flex; gap:10px; margin-bottom:28px;">
+                <button id="editBtnAtivo" onclick="selecionarStatusEdicao('ATIVO')"
+                    style="flex:1; padding:10px; border-radius:6px; cursor:pointer; font-weight:bold; border:2px solid ${status==='ATIVO'?'#00cc44':'#333'}; background:${status==='ATIVO'?'#003300':'#0a0a0a'}; color:${status==='ATIVO'?'#00cc44':'#888'};">
+                     ATIVO
+                </button>
+                <button id="editBtnInativo" onclick="selecionarStatusEdicao('INATIVO')"
+                    style="flex:1; padding:10px; border-radius:6px; cursor:pointer; font-weight:bold; border:2px solid ${status==='INATIVO'?'#ff4444':'#333'}; background:${status==='INATIVO'?'#1a0000':'#0a0a0a'}; color:${status==='INATIVO'?'#ff4444':'#888'};">
+                     INATIVO
+                </button>
+            </div>
+            <input type="hidden" id="editStatusHidden" value="${status}">
+
+            <div style="display:flex; gap:10px;">
+                <button onclick="salvarEdicaoUsuario(${id})" style="flex:2; background:#e60000; color:white; border:none; padding:14px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:15px;">SALVAR</button>
+                <button onclick="document.getElementById('modalEditarUsuario').remove()" style="flex:1; background:#222; color:#aaa; border:1px solid #333; padding:14px; border-radius:8px; cursor:pointer;">FECHAR</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+}
+
+function selecionarStatusEdicao(status) {
+    document.getElementById('editStatusHidden').value = status;
+    const btnAtivo   = document.getElementById('editBtnAtivo');
+    const btnInativo = document.getElementById('editBtnInativo');
+    if (status === 'ATIVO') {
+        btnAtivo.style.border = '2px solid #00cc44'; btnAtivo.style.background = '#003300'; btnAtivo.style.color = '#00cc44';
+        btnInativo.style.border = '2px solid #333';  btnInativo.style.background = '#0a0a0a'; btnInativo.style.color = '#888';
+    } else {
+        btnInativo.style.border = '2px solid #ff4444'; btnInativo.style.background = '#1a0000'; btnInativo.style.color = '#ff4444';
+        btnAtivo.style.border = '2px solid #333';     btnAtivo.style.background = '#0a0a0a';  btnAtivo.style.color = '#888';
+    }
+}
+
+async function salvarEdicaoUsuario(id) {
+    const nome   = document.getElementById('editNome')?.value.trim();
+    const status = document.getElementById('editStatusHidden')?.value;
+
+    if (!nome) { alert('O nome não pode estar vazio.'); return; }
+
+    try {
+        const [resNome, resStatus] = await Promise.all([
+            fetch(`${API_URL}/usuarios/${id}/editar`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nome })
+            }),
+            fetch(`${API_URL}/usuarios/${id}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status })
+            })
+        ]);
+
+        if (resNome.ok && resStatus.ok) {
+            document.getElementById('modalEditarUsuario')?.remove();
+            // Atualiza lista local
+            const u = window._usuariosAcesso?.find(x => (x.id||x.Id) == id);
+            if (u) { u.nome = nome.toUpperCase(); u.status = status; }
+            filtrarAcesso(document.getElementById('buscaAcesso')?.value || '');
+        } else {
+            const t = await (resNome.ok ? resStatus : resNome).text();
+            alert('Erro ao salvar: ' + t);
+        }
+    } catch(e) { alert('Erro de conexão.'); }
+}
 
     mostrarLogin();
 </script>
