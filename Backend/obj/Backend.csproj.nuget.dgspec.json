@@ -1,20 +1,20 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\ocaua\\OneDrive\\Desktop\\tcc\\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\\Backend\\Backend.csproj": {}
+    "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\Backend\\Backend.csproj": {}
   },
   "projects": {
-    "C:\\Users\\ocaua\\OneDrive\\Desktop\\tcc\\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\\Backend\\Backend.csproj": {
+    "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\Backend\\Backend.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\ocaua\\OneDrive\\Desktop\\tcc\\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\\Backend\\Backend.csproj",
+        "projectUniqueName": "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\Backend\\Backend.csproj",
         "projectName": "Backend",
-        "projectPath": "C:\\Users\\ocaua\\OneDrive\\Desktop\\tcc\\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\\Backend\\Backend.csproj",
-        "packagesPath": "C:\\Users\\ocaua\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\ocaua\\OneDrive\\Desktop\\tcc\\TSEA-TCC-RASTREABILIDADE-Smart-Tolls\\Backend\\obj\\",
+        "projectPath": "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\Backend\\Backend.csproj",
+        "packagesPath": "C:\\Users\\Emilly\\.nuget\\packages\\",
+        "outputPath": "C:\\Projetos\\TSEA_SISTEMA_COMPLETO\\Backend\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\ocaua\\AppData\\Roaming\\NuGet\\NuGet.Config"
+          "C:\\Users\\Emilly\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net10.0"
@@ -56,9 +56,13 @@
               "target": "Package",
               "version": "[10.0.7, )"
             },
-            "Npgsql.EntityFrameworkCore.PostgreSQL": {
+            "MySql.Data": {
               "target": "Package",
-              "version": "[8.0.2, )"
+              "version": "[9.7.0, )"
+            },
+            "Pomelo.EntityFrameworkCore.MySql": {
+              "target": "Package",
+              "version": "[9.0.0, )"
             },
             "System.IO.Ports": {
               "target": "Package",

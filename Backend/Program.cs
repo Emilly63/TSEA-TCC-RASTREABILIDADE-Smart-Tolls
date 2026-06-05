@@ -32,11 +32,179 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // Armazena tokens temporários de reset de senha
 var resetTokens = new Dictionary<string, (string Barcode, DateTime Expiry)>();
 
-// 🌟 INICIALIZA A PORTA SERIAL GLOBAL
+//  INICIALIZA A PORTA SERIAL GLOBAL
 ArduinoSerial.Inicializar();
 
 var app = builder.Build();
 app.UseCors("AllowAll");
+// ─── THREAD DE LEITURA SERIAL CONTÍNUA ───────────────────
+var notificacoesPendentes = new List<AvisoPendente>();
+var proximoAvisoId = 1;
+
+var mapeamentoSensores = new Dictionary<string, int>
+{
+    { "FERRAMENTA_1", 1 },
+    { "FERRAMENTA_2", 2 },
+    { "FERRAMENTA_3", 3 },
+    { "FERRAMENTA_4", 4 }
+};
+
+_ = Task.Run(async () =>
+{
+    while (true)
+    {
+        try
+        {
+            if (ArduinoSerial.Porta != null && ArduinoSerial.Porta.IsOpen && ArduinoSerial.Porta.BytesToRead > 0)
+            {
+                string resposta = ArduinoSerial.Porta.ReadLine().Trim();
+                Console.WriteLine($"[Arduino] Recebido: {resposta}");
+
+                if (resposta == "BOTAO_SAIDA_OK")
+                {
+                    BotaoControle.ConfirmadoSaida = true;
+                    continue;
+                }
+
+                // Sensor Magnético - Pino 13
+                if (resposta == "PORTA_FECHADA")
+                {
+                    EstadoPorta.Status = "FECHADA";
+                    EstadoPorta.AlarmeSemLogin = false;
+                    EstadoPorta.UltimaAtualizacao = DateTime.Now;
+                    Console.WriteLine("[Porta] Estado: FECHADA");
+                    continue;
+                }
+                if (resposta == "PORTA_ABERTA")
+                {
+                    EstadoPorta.Status = "ABERTA";
+                    EstadoPorta.UltimaAtualizacao = DateTime.Now;
+                    Console.WriteLine("[Porta] Estado: ABERTA");
+                    continue;
+                }
+                if (resposta == "PORTA_SEM_LOGIN")
+                {
+                    EstadoPorta.Status = "ALERTA_SEM_LOGIN";
+                    EstadoPorta.AlarmeSemLogin = true;
+                    EstadoPorta.UltimaAtualizacao = DateTime.Now;
+                    Console.WriteLine("[ALERTA] Porta aberta sem login ativo!");
+                    continue;
+                }
+
+                foreach (var sensor in mapeamentoSensores)
+                {
+                    if (resposta == $"{sensor.Key}_RETIRADA" || resposta == $"{sensor.Key}_DEVOLVIDA")
+                    {
+                        bool retirada = resposta.EndsWith("_RETIRADA");
+
+                        using var scope = app.Services.CreateScope();
+                        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+                        var ferramenta = await db.Ferramentas.FindAsync(sensor.Value);
+                        if (ferramenta != null)
+                        {
+                            if (retirada)
+                            {
+                                // Verifica se havia colaborador registrado (bipe no sistema)
+                                bool semRegistro = string.IsNullOrEmpty(ferramenta.Colaborador)
+                                                  && ferramenta.Status != "EM_USO";
+
+                                if (semRegistro)
+                                {
+                                    // Ferramenta saiu do armário sem nenhum bipe — gera alerta
+                                    ferramenta.Status = "AUSENTE_SEM_REGISTRO";
+                                    await db.SaveChangesAsync();
+
+                                    var codigoFerramenta = !string.IsNullOrWhiteSpace(ferramenta.CodigoBarras)
+                                        ? ferramenta.CodigoBarras
+                                        : $"TSEA-{ferramenta.Id:D3}";
+
+                                    // Busca o último operador com sessão ativa (DataSaida == null)
+                                    var sessaoAtiva = await db.LogsAcesso
+                                        .Where(l => l.DataSaida == null)
+                                        .OrderByDescending(l => l.DataEntrada)
+                                        .FirstOrDefaultAsync();
+
+                                    var operadorSuspeito = sessaoAtiva != null
+                                        ? await db.Usuarios.FirstOrDefaultAsync(u => u.CodigoBarras == sessaoAtiva.UsuarioId)
+                                        : null;
+
+                                    var operadorId    = operadorSuspeito?.CodigoBarras ?? "";
+                                    var operadorNome  = operadorSuspeito?.Nome ?? "DESCONHECIDO";
+
+                                    // Gera aviso DIRETO no operador com sessão ativa
+                                    if (!string.IsNullOrEmpty(operadorId))
+                                    {
+                                        notificacoesPendentes.Add(new AvisoPendente
+                                        {
+                                            Id           = proximoAvisoId++,
+                                            FerramentaId = ferramenta.Id,
+                                            UsuarioId    = operadorId,
+                                            Mensagem     = $"CONFIRMAR_RETIRADA|{codigoFerramenta}|{ferramenta.Descricao}",
+                                            Lido         = false,
+                                            CriadoEm    = DateTime.Now
+                                        });
+                                    }
+
+                                    // Também avisa os admins (para o sininho da oficina)
+                                    var admins = await db.Usuarios
+                                        .Where(u => u.Setor == "ADMIN" && u.Status == "ATIVO")
+                                        .ToListAsync();
+
+                                    foreach (var admin in admins)
+                                    {
+                                        notificacoesPendentes.Add(new AvisoPendente
+                                        {
+                                            Id           = proximoAvisoId++,
+                                            FerramentaId = ferramenta.Id,
+                                            UsuarioId    = admin.CodigoBarras,
+                                            Mensagem     = $"RETIRADA_SEM_REGISTRO|{codigoFerramenta}|{ferramenta.Descricao}|{operadorId}|{operadorNome}",
+                                            Lido         = false,
+                                            CriadoEm    = DateTime.Now
+                                        });
+                                    }
+
+                                    Console.WriteLine($"[ALERTA] {ferramenta.Descricao} retirada sem registro! Suspeito: {operadorNome} ({operadorId})");
+                                }
+                                else
+                                {
+                                    // Retirada normal — havia bipe e colaborador registrado
+                                    ferramenta.Status = "EM_USO";
+                                    await db.SaveChangesAsync();
+                                    Console.WriteLine($"[Sensor] {ferramenta.Descricao} → EM_USO");
+                                }
+                            }
+                            else
+                            {
+                                // Ferramenta devolvida — normaliza e cancela alertas pendentes
+                                ferramenta.Status = "DISPONIVEL";
+                                ferramenta.Colaborador = null;
+                                await db.SaveChangesAsync();
+
+                                var alertasPendentes = notificacoesPendentes
+                                    .Where(a => a.FerramentaId == ferramenta.Id && !a.Lido
+                                             && a.Mensagem.StartsWith("RETIRADA_SEM_REGISTRO"))
+                                    .ToList();
+                                foreach (var a in alertasPendentes) a.Lido = true;
+
+                                Console.WriteLine($"[Sensor] {ferramenta.Descricao} → DISPONIVEL");
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Serial Thread] {ex.Message}");
+        }
+
+        await Task.Delay(100); // verifica a cada 100ms
+    }
+});
+
+
 
 var frontendRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "Frontend"));
 if (Directory.Exists(frontendRoot))
@@ -61,8 +229,6 @@ using (var scope = app.Services.CreateScope())
 }
 
 var smtpConfig = builder.Configuration.GetSection("Smtp").Get<SmtpSettings>() ?? new SmtpSettings();
-var notificacoesPendentes = new List<AvisoPendente>();
-var proximoAvisoId = 1;
 
 // --- ALL LOCAL FUNCTIONS (MUST BE BEFORE ENDPOINT MAPPINGS) ---
 
@@ -420,7 +586,8 @@ app.MapPost("/movimentacao/devolver", async (MovimentacaoReq req, AppDbContext d
     }
 
     if (ferramenta == null) return Results.BadRequest(new { erro = "Ferramenta não encontrada." });
-    if (ferramenta.Status != "EM_USO") return Results.BadRequest(new { erro = "Esta ferramenta não está em uso." });
+    if (ferramenta.Status != "EM_USO" && ferramenta.Status != "AUSENTE_SEM_REGISTRO")
+        return Results.BadRequest(new { erro = "Esta ferramenta não está em uso." });
 
     ferramenta.Status = "DISPONIVEL";
     ferramenta.Colaborador = null;
@@ -440,6 +607,58 @@ app.MapGet("/usuarios", async (AppDbContext db) =>
         .Select(u => new { u.Id, u.Nome, u.CodigoBarras, u.Setor, u.Status })
         .ToListAsync();
     return Results.Ok(usuarios);
+});
+
+// --- GERENCIAR ACESSO: LISTAR TODOS OS USUÁRIOS (ATIVOS E INATIVOS) ---
+app.MapGet("/usuarios/todos", async (AppDbContext db) =>
+{
+    var usuarios = await db.Usuarios
+        .Select(u => new { u.Id, u.Nome, u.CodigoBarras, u.Setor, u.Status, u.Email })
+        .OrderBy(u => u.Nome)
+        .ToListAsync();
+    return Results.Ok(usuarios);
+});
+
+// --- GERENCIAR ACESSO: ATIVAR / DESATIVAR USUÁRIO ---
+app.MapPut("/usuarios/{id:int}/status", async (int id, HttpContext http, AppDbContext db) =>
+{
+    using var reader = new StreamReader(http.Request.Body);
+    var body = await reader.ReadToEndAsync();
+    var req = System.Text.Json.JsonSerializer.Deserialize<AlterarStatusUsuarioRequest>(body,
+        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+    if (req == null || string.IsNullOrWhiteSpace(req.Status))
+        return Results.BadRequest("Status inválido.");
+
+    var novoStatus = req.Status.ToUpperInvariant();
+    if (novoStatus != "ATIVO" && novoStatus != "INATIVO")
+        return Results.BadRequest("Status deve ser ATIVO ou INATIVO.");
+
+    var usuario = await db.Usuarios.FindAsync(id);
+    if (usuario == null) return Results.NotFound("Usuário não encontrado.");
+
+    usuario.Status = novoStatus;
+    await db.SaveChangesAsync();
+    return Results.Ok(new { mensagem = $"Usuário {(novoStatus == "ATIVO" ? "ativado" : "desativado")} com sucesso." });
+});
+
+// --- GERENCIAR ACESSO: EDITAR NOME DO USUÁRIO ---
+app.MapPut("/usuarios/{id:int}/editar", async (int id, HttpContext http, AppDbContext db) =>
+{
+    using var reader = new StreamReader(http.Request.Body);
+    var body = await reader.ReadToEndAsync();
+    var req = System.Text.Json.JsonSerializer.Deserialize<EditarUsuarioRequest>(body,
+        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+    if (req == null || string.IsNullOrWhiteSpace(req.Nome))
+        return Results.BadRequest("Nome é obrigatório.");
+
+    var usuario = await db.Usuarios.FindAsync(id);
+    if (usuario == null) return Results.NotFound("Usuário não encontrado.");
+
+    usuario.Nome = req.Nome.Trim();
+    await db.SaveChangesAsync();
+    return Results.Ok(new { mensagem = "Usuário atualizado com sucesso." });
 });
 
 app.MapGet("/ferramentas", async (AppDbContext db) => 
@@ -591,33 +810,7 @@ app.MapPost("/logout", async (LogoutRequest req, AppDbContext db) =>
 });
 
 // --- ROTA DE CONSULTA DO BOTÃO ---
-app.MapGet("/api/arduino/status-botao", () => {
-    if (BotaoControle.ConfirmadoSaida) {
-        BotaoControle.ConfirmadoSaida = false; 
-        return Results.Ok(new { confirmado = true });
-    }
-
-    try 
-    {
-        if (ArduinoSerial.Porta.IsOpen && ArduinoSerial.Porta.BytesToRead > 0)
-        {
-            // Lê TODAS as linhas do buffer para não perder o BOTAO_SAIDA_OK
-            while (ArduinoSerial.Porta.BytesToRead > 0)
-            {
-                string resposta = ArduinoSerial.Porta.ReadLine().Trim();
-                Console.WriteLine($"[Arduino] Recebido: {resposta}");
-                if (resposta == "BOTAO_SAIDA_OK")
-                {
-                    Console.WriteLine("[Arduino] Confirmação do botão físico detetada!");
-                    return Results.Ok(new { confirmado = true });
-                }
-            }
-        }
-    }
-    catch { /* Evita travar a API com timeouts corriqueiros */ }
-
-    return Results.Ok(new { confirmado = false });
-});
+// --- LEITURA SERIAL DO ARDUINO (SENSORES DE FERRAMENTA) ---
 
 // --- AVISOS ---
 
@@ -660,6 +853,25 @@ app.MapPost("/avisos/{id:int}/lido", (int id) =>
     return Results.Ok(new { mensagem = "Aviso marcado como lido." });
 });
 
+// --- ENDPOINT STATUS DA PORTA (Sensor Magnético) ---
+app.MapGet("/status/porta", () =>
+{
+    return Results.Ok(new {
+        status = EstadoPorta.Status,
+        alarmeSemLogin = EstadoPorta.AlarmeSemLogin,
+        ultimaAtualizacao = EstadoPorta.UltimaAtualizacao.ToString("yyyy-MM-ddTHH:mm:ss")
+    });
+});
+
+// --- ENDPOINT PARA SILENCIAR ALERTA (admin reconheceu) ---
+app.MapPost("/status/porta/silenciar", () =>
+{
+    EstadoPorta.AlarmeSemLogin = false;
+    if (EstadoPorta.Status == "ALERTA_SEM_LOGIN")
+        EstadoPorta.Status = "ABERTA";
+    return Results.Ok(new { mensagem = "Alerta silenciado." });
+});
+
 // --- ENDPOINT DE RELATÓRIO (JSON) ---
 app.MapGet("/relatorio", async (string tipo, string? dataInicio, string? dateFim, AppDbContext db) =>
 {
@@ -694,7 +906,7 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
     ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
     using var pkg = new ExcelPackage();
 
-    // ── Cores da marca TSEA ──
+    //  Cores da marca TSEA 
     var vermelho    = System.Drawing.Color.FromArgb(0xCC, 0x00, 0x00);
     var vermelhoClaro = System.Drawing.Color.FromArgb(0xFF, 0xE5, 0xE5);
     var cinzaHeader = System.Drawing.Color.FromArgb(0x1A, 0x1A, 0x1A);
@@ -707,10 +919,10 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
         "DIARIO" => "DIÁRIO", "MENSAL" => "MENSAL", "ANUAL" => "ANUAL", _ => tipo.ToUpper()
     };
 
-    // ╔══════════════════════════════╗
-    // ║  ABA 1 — RESUMO              ║
-    // ╚══════════════════════════════╝
-    var wsR = pkg.Workbook.Worksheets.Add("📊 Resumo");
+    // 
+    //   ABA 1 — RESUMO              
+    // 
+    var wsR = pkg.Workbook.Worksheets.Add(" Resumo");
     wsR.View.ShowGridLines = false;
     wsR.Column(1).Width = 36;
     wsR.Column(2).Width = 22;
@@ -834,10 +1046,10 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
         }
     }
 
-    // ╔══════════════════════════════╗
-    // ║  ABA 2 — MOVIMENTAÇÕES       ║
-    // ╚══════════════════════════════╝
-    var wsMov = pkg.Workbook.Worksheets.Add("🔄 Movimentações");
+    // 
+    //   ABA 2 — MOVIMENTAÇÕES       
+    // 
+    var wsMov = pkg.Workbook.Worksheets.Add(" Movimentações");
     wsMov.View.ShowGridLines = false;
     wsMov.Row(1).Height = 42;
     wsMov.Cells["A1:J1"].Merge = true;
@@ -862,7 +1074,7 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
         wsMov.Cells[movRow,4].Value  = m.Setor;
         wsMov.Cells[movRow,5].Value  = m.Colaborador;
         wsMov.Cells[movRow,6].Value  = m.DataRetirada.ToString("dd/MM/yyyy HH:mm");
-        wsMov.Cells[movRow,7].Value = (m.DataDevolucao != null) ? ((DateTime)m.DataDevolucao).ToString("dd/MM/yyyy HH:mm") : "—";
+        wsMov.Cells[movRow,7].Value  = m.DataDevolucao.HasValue ? m.DataDevolucao.Value.ToString("dd/MM/yyyy HH:mm") : "—";
         wsMov.Cells[movRow,8].Value  = m.DuracaoMinutos;
         wsMov.Cells[movRow,9].Value  = m.DevolvidaManualmente ? "SIM" : "NÃO";
         wsMov.Cells[movRow,10].Value = m.Status;
@@ -880,10 +1092,10 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
         wsMov.Cells[r,8].Style.HorizontalAlignment  = ExcelHorizontalAlignment.Center;
     }
 
-    // ╔══════════════════════════════╗
-    // ║  ABA 3 — LOGS DE ACESSO      ║
-    // ╚══════════════════════════════╝
-    var wsLog = pkg.Workbook.Worksheets.Add("🔐 Logs de Acesso");
+    // 
+    //   ABA 3 — LOGS DE ACESSO      
+    // 
+    var wsLog = pkg.Workbook.Worksheets.Add(" Logs de Acesso");
     wsLog.View.ShowGridLines = false;
     wsLog.Row(1).Height = 42;
     wsLog.Cells["A1:H1"].Merge = true;
@@ -906,7 +1118,7 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
         wsLog.Cells[logRow,2].Value = l.Colaborador;
         wsLog.Cells[logRow,3].Value = l.UsuarioId;
         wsLog.Cells[logRow,4].Value = l.DataEntrada.ToString("dd/MM/yyyy HH:mm");
-        wsLog.Cells[logRow,5].Value = (l.DataSaida != null) ? ((DateTime)l.DataSaida).ToString("dd/MM/yyyy HH:mm") : "Ainda logado";
+        wsLog.Cells[logRow,5].Value = l.DataSaida.HasValue ? l.DataSaida.Value.ToString("dd/MM/yyyy HH:mm") : "Ainda logado";
         wsLog.Cells[logRow,6].Value = l.DuracaoMinutos;
         wsLog.Cells[logRow,7].Value = l.MotivoSaida ?? "—";
         wsLog.Cells[logRow,8].Value = l.StatusAcesso;
@@ -919,10 +1131,10 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
         wsLog.Cells[r,8].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
     }
 
-    // ╔══════════════════════════════════╗
-    // ║  ABA 4 — FERRAMENTAS ATRASADAS   ║
-    // ╚══════════════════════════════════╝
-    var wsAt = pkg.Workbook.Worksheets.Add("⚠️ Atrasadas");
+    // 
+    //   ABA 4 — FERRAMENTAS ATRASADAS   
+    // 
+    var wsAt = pkg.Workbook.Worksheets.Add(" Atrasadas");
     wsAt.View.ShowGridLines = false;
     wsAt.Row(1).Height = 42;
     wsAt.Cells["A1:F1"].Merge = true;
@@ -972,26 +1184,63 @@ app.Run();
 // CLASSES — devem ficar SEMPRE após o app.Run()
 // ============================================================
 
+// --- FUNÇÃO DE ENVIO ---
+void EnviarComandoArduino(string comando)
+{
+    try
+    {
+        if (ArduinoSerial.Porta == null || !ArduinoSerial.Porta.IsOpen)
+            ArduinoSerial.TentarAbrir();
+
+        if (ArduinoSerial.Porta != null && ArduinoSerial.Porta.IsOpen)
+        {
+            ArduinoSerial.Porta.WriteLine(comando);
+            Console.WriteLine($"[Serial] Comando enviado: {comando}");
+        }
+        else
+        {
+            Console.WriteLine("[Serial Error] Porta não está aberta.");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Serial Error] {ex.Message}");
+    }
+}
+
 // 🌟 CONTROLE DO STATUS DO BOTÃO
 public static class BotaoControle
 {
     public static bool ConfirmadoSaida { get; set; } = false;
 }
 
-// 🔌 CONEXÃO SERIAL GLOBAL
+// ESTADO DA PORTA (Sensor Magnético - Pino 13)
+public static class EstadoPorta
+{
+    public static string Status { get; set; } = "DESCONHECIDO"; // ABERTA, FECHADA, ALERTA_SEM_LOGIN
+    public static DateTime UltimaAtualizacao { get; set; } = DateTime.Now;
+    public static bool AlarmeSemLogin { get; set; } = false;
+}
+
+//  CONEXÃO SERIAL GLOBAL
 public static class ArduinoSerial
 {
-    public static SerialPort Porta = new SerialPort("COM5", 9600) { ReadTimeout = 150 };
-    
+    public static SerialPort Porta = new SerialPort("COM7", 9600) { ReadTimeout = 150 };
+
     public static void Inicializar()
+    {
+        TentarAbrir();
+    }
+
+    public static void TentarAbrir()
     {
         try {
             if (!Porta.IsOpen) {
                 Porta.Open();
-                Console.WriteLine("[Arduino] Conexão Serial global aberta com sucesso na COM5!");
+                Console.WriteLine("[Arduino] Porta serial aberta na COM5!");
             }
         } catch (Exception ex) {
-            Console.WriteLine($"[Arduino] Erro crítico ao abrir porta serial global: {ex.Message}");
+            Console.WriteLine($"[Arduino] Erro ao abrir porta: {ex.Message}");
         }
     }
 }
@@ -1070,3 +1319,5 @@ public class AvisoPendente {
 }
 
 public record RedefinirSenhaRequest(string Token, string NovaSenha);
+public record AlterarStatusUsuarioRequest(string Status);
+public record EditarUsuarioRequest(string Nome);
