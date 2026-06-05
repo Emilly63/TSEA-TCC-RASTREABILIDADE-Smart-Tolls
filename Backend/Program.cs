@@ -64,7 +64,8 @@ var smtpConfig = builder.Configuration.GetSection("Smtp").Get<SmtpSettings>() ??
 var notificacoesPendentes = new List<AvisoPendente>();
 var proximoAvisoId = 1;
 
-// --- LOCAL FUNCTIONS (MUST BE BEFORE app.Run())---
+// --- ALL LOCAL FUNCTIONS (MUST BE BEFORE ENDPOINT MAPPINGS) ---
+
 static string HashPassword(string password)
 {
     const int iterations = 100_000;
@@ -117,6 +118,129 @@ static async Task<bool> SendEmailAsync(SmtpSettings settings, string toEmail, st
         Console.Error.WriteLine($"SMTP INNER: {ex.InnerException?.Message}");
         return false;
     }
+}
+
+// --- FUNCTION TO SEND ARDUINO COMMANDS ---
+void EnviarComandoArduino(string comando)
+{
+    try
+    {
+        if (ArduinoSerial.Porta != null && ArduinoSerial.Porta.IsOpen)
+        {
+            ArduinoSerial.Porta.WriteLine(comando); 
+            Console.WriteLine($"[Serial] Comando enviado com sucesso: {comando}");
+        }
+        else
+        {
+            Console.WriteLine("[Serial Error] Porta não está aberta.");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Serial Error] Erro ao enviar comando: {ex.Message}");
+    }
+}
+
+// --- HELPERS RELATÓRIO (MUST BE BEFORE ENDPOINT MAPPINGS) ---
+static (DateTime inicio, DateTime fim, string? erro) ResolverPeriodo(string tipo, string? dataInicio)
+{
+    var hoje = DateTime.Today;
+    DateTime inicio, fim;
+    switch (tipo?.ToUpper())
+    {
+        case "DIARIO":
+            inicio = string.IsNullOrWhiteSpace(dataInicio) ? hoje : DateTime.Parse(dataInicio);
+            fim = inicio.AddDays(1).AddSeconds(-1);
+            break;
+        case "MENSAL":
+            if (!string.IsNullOrWhiteSpace(dataInicio) && DateTime.TryParse(dataInicio, out var mRef))
+            { inicio = new DateTime(mRef.Year, mRef.Month, 1); fim = inicio.AddMonths(1).AddSeconds(-1); }
+            else
+            { inicio = new DateTime(hoje.Year, hoje.Month, 1); fim = inicio.AddMonths(1).AddSeconds(-1); }
+            break;
+        case "ANUAL":
+            var ano = string.IsNullOrWhiteSpace(dataInicio) ? hoje.Year : DateTime.Parse(dataInicio).Year;
+            inicio = new DateTime(ano, 1, 1); fim = new DateTime(ano, 12, 31, 23, 59, 59);
+            break;
+        default:
+            return (DateTime.MinValue, DateTime.MinValue, "Tipo inválido. Use: DIARIO, MENSAL ou ANUAL.");
+    }
+    return (inicio, fim, null);
+}
+
+static async Task<(
+    List<dynamic> movs,
+    List<dynamic> logs,
+    List<dynamic> atrasadas,
+    dynamic resumo,
+    dynamic resumoFerr
+)> ColetarDadosRelatorio(AppDbContext db, DateTime inicio, DateTime fim)
+{
+    var movimentacoes = await db.Movimentacoes
+        .Where(m => m.DataRetirada >= inicio && m.DataRetirada <= fim).ToListAsync();
+    var ferramentas = await db.Ferramentas.AsNoTracking().ToListAsync();
+    var usuarios    = await db.Usuarios.AsNoTracking().ToListAsync();
+    var logsAcesso  = await db.LogsAcesso
+        .Where(l => l.DataEntrada >= inicio && l.DataEntrada <= fim).ToListAsync();
+
+    var atrasadas = ferramentas
+        .Where(f => f.Status == "EM_USO" || f.Status == "ATRASADO")
+        .Select(f => (dynamic)new {
+            f.Id, f.Descricao, f.CodigoBarras, f.Setor, f.Status, f.Colaborador
+        }).ToList();
+
+    var movs = movimentacoes.Select(m => {
+        var ferr = ferramentas.FirstOrDefault(f => f.Id == m.FerramentaId);
+        var user = usuarios.FirstOrDefault(u => u.CodigoBarras == m.UsuarioId);
+        var dur  = m.DataDevolucao.HasValue
+            ? (m.DataDevolucao.Value - m.DataRetirada).TotalMinutes
+            : (DateTime.Now - m.DataRetirada).TotalMinutes;
+        return (dynamic)new {
+            m.Id,
+            Ferramenta = ferr?.Descricao ?? "Desconhecida",
+            CodigoBarras = ferr?.CodigoBarras ?? $"TSEA-{m.FerramentaId:D3}",
+            Setor = ferr?.Setor ?? "—",
+            Colaborador = user?.Nome ?? m.UsuarioId,
+            m.DataRetirada,
+            DataDevolucao = m.DataDevolucao,
+            DevolvidaManualmente = m.DataDevolucao.HasValue,
+            DuracaoMinutos = Math.Round(dur, 1),
+            Status = m.DataDevolucao.HasValue ? "DEVOLVIDA" : "EM ABERTO"
+        };
+    }).ToList();
+
+    var logs = logsAcesso.Select(l => {
+        var user = usuarios.FirstOrDefault(u => u.CodigoBarras == l.UsuarioId);
+        return (dynamic)new {
+            l.Id,
+            Colaborador = user?.Nome ?? l.UsuarioId,
+            l.UsuarioId,
+            l.DataEntrada,
+            DataSaida = l.DataSaida,
+            DuracaoMinutos = l.DataSaida.HasValue
+                ? Math.Round((l.DataSaida.Value - l.DataEntrada).TotalMinutes, 1)
+                : Math.Round((DateTime.Now - l.DataEntrada).TotalMinutes, 1),
+            MotivoSaida = l.MotivoSaida,
+            l.StatusAcesso
+        };
+    }).ToList();
+
+    dynamic resumo = new {
+        TotalMovimentacoes  = movimentacoes.Count,
+        Devolvidas          = movimentacoes.Count(m => m.DataDevolucao.HasValue),
+        EmAberto            = movimentacoes.Count(m => !m.DataDevolucao.HasValue),
+        FerramentasAtrasadas = atrasadas.Count,
+        TotalLogsAcesso     = logsAcesso.Count,
+        UsuariosUnicos      = movimentacoes.Select(m => m.UsuarioId).Distinct().Count()
+    };
+    dynamic resumoFerr = new {
+        Total       = ferramentas.Count,
+        Disponiveis = ferramentas.Count(f => f.Status == "DISPONIVEL"),
+        EmUso       = ferramentas.Count(f => f.Status == "EM_USO"),
+        Manutencao  = ferramentas.Count(f => f.Status == "MANUTENCAO")
+    };
+
+    return (movs, logs, atrasadas, resumo, resumoFerr);
 }
 
 // --- ENDPOINTS ---
@@ -842,7 +966,7 @@ app.MapGet("/relatorio/xlsx", async (string tipo, string? dataInicio, AppDbConte
         nomeArq);
 });
 
-// --- HELPERS RELATÓRIO ---
+// --- HELPERS RELATÓRIO (MUST BE BEFORE ENDPOINT MAPPINGS) ---
 static (DateTime inicio, DateTime fim, string? erro) ResolverPeriodo(string tipo, string? dataInicio)
 {
     var hoje = DateTime.Today;
@@ -945,28 +1069,6 @@ static async Task<(
 }
 
 app.Run();
-
-// --- FUNÇÃO DE ENVIO ---
-void EnviarComandoArduino(string comando)
-{
-    try
-    {
-        if (ArduinoSerial.Porta != null && ArduinoSerial.Porta.IsOpen)
-        {
-            // CORREÇÃO ESSENCIAL: Usar WriteLine para enviar a quebra de linha '\n'
-            ArduinoSerial.Porta.WriteLine(comando); 
-            Console.WriteLine($"[Serial] Comando enviado com sucesso: {comando}");
-        }
-        else
-        {
-            Console.WriteLine("[Serial Error] Porta não está aberta.");
-        }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[Serial Error] Erro ao enviar comando: {ex.Message}");
-    }
-}
 
 // ============================================================
 // CLASSES — devem ficar SEMPRE após o app.Run()
