@@ -142,7 +142,7 @@ _ = Task.Run(async () =>
                                             UsuarioId    = operadorId,
                                             Mensagem     = $"CONFIRMAR_RETIRADA|{codigoFerramenta}|{ferramenta.Descricao}",
                                             Lido         = false,
-                                            CriadoEm    = DateTime.Now
+                                            CriadoEm    = DateTime.UtcNow
                                         });
                                     }
 
@@ -160,7 +160,7 @@ _ = Task.Run(async () =>
                                             UsuarioId    = admin.CodigoBarras,
                                             Mensagem     = $"RETIRADA_SEM_REGISTRO|{codigoFerramenta}|{ferramenta.Descricao}|{operadorId}|{operadorNome}",
                                             Lido         = false,
-                                            CriadoEm    = DateTime.Now
+                                            CriadoEm    = DateTime.UtcNow
                                         });
                                     }
 
@@ -565,7 +565,7 @@ app.MapPost("/movimentacao/retirar", async (MovimentacaoReq req, AppDbContext db
         ferramenta.Status = "EM_USO";
         ferramenta.Colaborador = usuario.Nome;
 
-        db.Movimentacoes.Add(new Movimentacoes { FerramentaId = ferramenta.Id, UsuarioId = req.UsuarioId, DataRetirada = DateTime.Now });
+        db.Movimentacoes.Add(new Movimentacoes { FerramentaId = ferramenta.Id, UsuarioId = req.UsuarioId, DataRetirada = DateTime.UtcNow });
         await db.SaveChangesAsync();
         return Results.Ok(new { colaborador = usuario.Nome });
     }
@@ -593,7 +593,7 @@ app.MapPost("/movimentacao/devolver", async (MovimentacaoReq req, AppDbContext d
     ferramenta.Colaborador = null;
 
     var mov = await db.Movimentacoes.FirstOrDefaultAsync(m => m.FerramentaId == ferramenta.Id && m.DataDevolucao == null);
-    if (mov != null) mov.DataDevolucao = DateTime.Now;
+    if (mov != null) mov.DataDevolucao = DateTime.UtcNow;
     
     await db.SaveChangesAsync();
     return Results.Ok("Devolvida com sucesso!");
@@ -779,7 +779,7 @@ app.MapPost("/login", async (LoginRequest req, AppDbContext db) =>
 
     db.LogsAcesso.Add(new LogAcesso { 
         UsuarioId = usuario.CodigoBarras, 
-        DataEntrada = DateTime.Now, 
+        DataEntrada = DateTime.UtcNow, 
         StatusAcesso = "ATIVO" 
     });
     await db.SaveChangesAsync();
@@ -798,7 +798,7 @@ app.MapPost("/logout", async (LogoutRequest req, AppDbContext db) =>
 
     if (ultimoLog != null)
     {
-        ultimoLog.DataSaida = DateTime.Now;
+        ultimoLog.DataSaida = DateTime.UtcNow;
         ultimoLog.MotivoSaida = req.Motivo;
     }
     await db.SaveChangesAsync();
@@ -827,7 +827,7 @@ app.MapPost("/avisos", (AvisoRequest req) =>
         UsuarioId = req.UsuarioId.Trim().ToUpperInvariant(),
         Mensagem = req.Mensagem ?? "Você recebeu um aviso do administrador.",
         Lido = false,
-        CriadoEm = DateTime.Now
+        CriadoEm = DateTime.UtcNow
     };
     notificacoesPendentes.Add(aviso);
     return Results.Ok(new { mensagem = "Aviso enviado com sucesso.", id = aviso.Id });
@@ -1184,30 +1184,6 @@ app.Run();
 // CLASSES — devem ficar SEMPRE após o app.Run()
 // ============================================================
 
-// --- FUNÇÃO DE ENVIO ---
-void EnviarComandoArduino(string comando)
-{
-    try
-    {
-        if (ArduinoSerial.Porta == null || !ArduinoSerial.Porta.IsOpen)
-            ArduinoSerial.TentarAbrir();
-
-        if (ArduinoSerial.Porta != null && ArduinoSerial.Porta.IsOpen)
-        {
-            ArduinoSerial.Porta.WriteLine(comando);
-            Console.WriteLine($"[Serial] Comando enviado: {comando}");
-        }
-        else
-        {
-            Console.WriteLine("[Serial Error] Porta não está aberta.");
-        }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[Serial Error] {ex.Message}");
-    }
-}
-
 // 🌟 CONTROLE DO STATUS DO BOTÃO
 public static class BotaoControle
 {
@@ -1285,7 +1261,7 @@ public class Movimentacoes {
 public class LogAcesso {
     public int Id { get; set; }
     public string UsuarioId { get; set; } = "";
-    public DateTime DataEntrada { get; set; } = DateTime.Now;
+    public DateTime DataEntrada { get; set; } = DateTime.UtcNow;
     public DateTime? DataSaida { get; set; }
     public string? MotivoSaida { get; set; }
     public string StatusAcesso { get; set; } = "ATIVO";
@@ -1315,9 +1291,15 @@ public class AvisoPendente {
     public string UsuarioId { get; set; } = "";
     public string Mensagem { get; set; } = "";
     public bool Lido { get; set; } = false;
-    public DateTime CriadoEm { get; set; } = DateTime.Now;
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 
-public record RedefinirSenhaRequest(string Token, string NovaSenha);
-public record AlterarStatusUsuarioRequest(string Status);
 public record EditarUsuarioRequest(string Nome);
+public record RedefinirSenhaRequest(
+    string Token,
+    string NovaSenha
+);
+
+public record AlterarStatusUsuarioRequest(
+    string Status
+);

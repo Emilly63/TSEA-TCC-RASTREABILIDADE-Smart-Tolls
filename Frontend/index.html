@@ -219,7 +219,7 @@
 
 <script>
     // --- CONFIGURAÇÃO BACKEND ---
-    const API_URL = "http://localhost:5045"; // Ajuste para a porta do seu .NET
+    const API_URL = window.location.origin; // Use the deployed host/origin automatically
 
     function toggleSenha() {
         var pwd = document.getElementById('passwordLogin');
@@ -1841,7 +1841,7 @@ async function fazerLogout(motivo = "VOLUNTARIO") {
 }
 // Função que pergunta ao backend se o botão do Arduino foi clicado
 function verificarConfirmacaoBotao() {
-    fetch(`http://localhost:5045/api/arduino/status-botao`)
+    fetch(`${API_URL}/api/arduino/status-botao`)
     .then(res => res.json())
     .then(data => {
         if (data.confirmado === true) {
